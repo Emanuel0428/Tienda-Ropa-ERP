@@ -505,49 +505,58 @@ const Audit = () => {
                             <span className="text-md font-bold text-primary-600">{getSubcategoriaTotal(subcat).toFixed(2)}</span>
                         </div>
                       </div>
-                      <table className="w-full text-sm">
-                        <thead className="bg-gray-50">
-                          <tr>
-                            <th className="p-2 text-left">Ítem</th>
-                            <th className="p-2 text-center">Calificación</th>
-                            <th className="p-2 text-center">Novedad</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {subcat.items.map(item => (
-                            <tr key={item.id} className="border-b">
-                              <td className="p-2">{item.label}</td>
-                              <td className="p-2 text-center">
-                                <div className="flex items-center justify-center gap-2">
-                                  <button
-                                    onClick={() => handleCalificacionChange(cat.id, subcat.id, item.id, 100)}
-                                    className={`px-2 py-1 rounded border ${item.calificacion === 100 ? 'bg-green-200 border-green-500' : 'bg-white border-gray-300'}`}
-                                    title="Cumple"
-                                  >
-                                    ✔️
-                                  </button>
-                                  <button
-                                    onClick={() => handleCalificacionChange(cat.id, subcat.id, item.id, 0)}
-                                    className={`px-2 py-1 rounded border ${item.calificacion === 0 ? 'bg-red-200 border-red-500' : 'bg-white border-gray-300'}`}
-                                    title="No cumple"
-                                  >
-                                    ❌
-                                  </button>
-                                </div>
-                              </td>
-                              <td className="p-2 text-center">
-                                <input
-                                  type="text"
-                                  value={item.novedad}
-                                  onChange={e => handleNovedadChange(cat.id, subcat.id, item.id, e.target.value)}
-                                  className="w-48 border rounded px-2 py-1"
-                                  placeholder="Observaciones o novedades"
-                                />
-                              </td>
+                      <div className="overflow-x-auto">
+                        <table className="min-w-full text-sm">
+                          <thead className="bg-gray-50">
+                            <tr>
+                              <th className="p-2 text-left w-2/5">Ítem</th>
+                              <th className="p-2 text-center w-1/5">Calificación</th>
+                              <th className="p-2 text-center w-2/5">Novedad</th>
                             </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                          </thead>
+                          <tbody>
+                            {subcat.items.map(item => (
+                              <tr key={item.id} className="border-b">
+                                <td className="p-2">{item.label}</td>
+                                <td className="p-2 text-center">
+                                  <div className="flex items-center justify-center gap-2">
+                                    <button
+                                      onClick={() => handleCalificacionChange(cat.id, subcat.id, item.id, 100)}
+                                      className={`px-2 py-1 rounded border ${item.calificacion === 100 ? 'bg-green-200 border-green-500' : 'bg-white border-gray-300'}`}
+                                      title="Cumple"
+                                    >
+                                      ✔️
+                                    </button>
+                                    <button
+                                      onClick={() => handleCalificacionChange(cat.id, subcat.id, item.id, 0)}
+                                      className={`px-2 py-1 rounded border ${item.calificacion === 0 ? 'bg-red-200 border-red-500' : 'bg-white border-gray-300'}`}
+                                      title="No cumple"
+                                    >
+                                      ❌
+                                    </button>
+                                  </div>
+                                </td>
+                                <td className="p-2">
+                                  <div className="relative group">
+                                    <input
+                                      type="text"
+                                      value={item.novedad}
+                                      onChange={e => handleNovedadChange(cat.id, subcat.id, item.id, e.target.value)}
+                                      className="w-full border rounded px-2 py-1 truncate"
+                                      placeholder="Observaciones o novedades"
+                                    />
+                                    {item.novedad && (
+                                      <div className="hidden group-hover:block absolute z-10 bg-white border rounded-lg shadow-lg p-2 mt-1 max-w-md">
+                                        {item.novedad}
+                                      </div>
+                                    )}
+                                  </div>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
                     </div>
                   ))}
                 </div>

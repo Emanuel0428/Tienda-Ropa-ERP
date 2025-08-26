@@ -8,7 +8,7 @@ const Auth: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState({
     nombre: '',
-    rol: '',
+    rol: 'asesor', // Rol por defecto
     id_tienda: '',
     fecha_nacimiento: '',
     celular: '',
@@ -16,6 +16,25 @@ const Auth: React.FC = () => {
   });
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [tiendas, setTiendas] = useState<{ id: number; nombre: string; }[]>([]);
+
+  // Cargar la lista de tiendas al montar el componente
+  React.useEffect(() => {
+    const fetchTiendas = async () => {
+      const { data, error } = await supabase
+        .from('tiendas')
+        .select('id, nombre')
+        .order('nombre');
+      
+      if (error) {
+        console.error('Error cargando tiendas:', error);
+      } else {
+        setTiendas(data || []);
+      }
+    };
+
+    fetchTiendas();
+  }, []);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     setForm({ ...form, [e.target.name]: e.target.value });
@@ -151,40 +170,28 @@ const Auth: React.FC = () => {
                   />
                 </div>
                 
-                <div>
-                  <label htmlFor="rol" className="block text-sm font-medium text-gray-700">
-                    Rol
-                  </label>
-                  <select
-                    id="rol"
-                    name="rol"
-                    required={isRegister}
-                    value={form.rol}
-                    onChange={handleChange}
-                    className="mt-1 block w-full px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-primary-600 focus:border-primary-500 sm:text-sm"
-                  >
-                    <option value="">Selecciona un rol</option>
-                    <option value="admin">Administrador</option>
-                    <option value="coordinador">Coordinador</option>
-                    <option value="asesora">Asesora</option>
-                    <option value="auditor">Auditor</option>
-                  </select>
-                </div>
+                {/* El rol es fijo como asesor */}
+                <input type="hidden" name="rol" value="asesor" />
                 
                 <div>
                   <label htmlFor="id_tienda" className="block text-sm font-medium text-gray-700">
-                    ID Tienda
+                    Tienda
                   </label>
-                  <input
+                  <select
                     id="id_tienda"
                     name="id_tienda"
-                    type="number"
                     required={isRegister}
                     value={form.id_tienda}
                     onChange={handleChange}
-                    className="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-primary-600 focus:border-primary-500 focus:z-10 sm:text-sm"
-                    placeholder="ID de la tienda"
-                  />
+                    className="mt-1 block w-full px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-primary-600 focus:border-primary-500 sm:text-sm"
+                  >
+                    <option value="">Selecciona una tienda</option>
+                    {tiendas.map(tienda => (
+                      <option key={tienda.id} value={tienda.id}>
+                        {tienda.nombre}
+                      </option>
+                    ))}
+                  </select>
                 </div>
                 
                 <div>
