@@ -16,14 +16,14 @@ const Auth: React.FC = () => {
   });
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
-  const [tiendas, setTiendas] = useState<{ id: number; nombre: string; }[]>([]);
+  const [tiendas, setTiendas] = useState<{ id_tienda: number; nombre: string; }[]>([]);
 
   // Cargar la lista de tiendas al montar el componente
   React.useEffect(() => {
     const fetchTiendas = async () => {
       const { data, error } = await supabase
         .from('tiendas')
-        .select('id, nombre')
+        .select('id_tienda, nombre')
         .order('nombre');
       
       if (error) {
@@ -187,7 +187,7 @@ const Auth: React.FC = () => {
                   >
                     <option value="">Selecciona una tienda</option>
                     {tiendas.map(tienda => (
-                      <option key={tienda.id} value={tienda.id}>
+                      <option key={tienda.id_tienda} value={tienda.id_tienda}>
                         {tienda.nombre}
                       </option>
                     ))}

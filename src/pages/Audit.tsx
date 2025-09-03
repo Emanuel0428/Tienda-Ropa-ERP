@@ -1,5 +1,31 @@
 import { supabase } from '../supabaseClient';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useAuth } from '../hooks/useAuth';
+
+// Interfaces para la base de datos
+interface Usuario {
+  id_usuario: number;
+  nombre: string;
+  rol: string;
+  id_tienda: number | null;
+}
+
+interface Tienda {
+  id_tienda: number;
+  nombre: string;
+}
+
+interface AuditoriaDB {
+  id_auditoria: number;
+  id_tienda: number;
+  id_auditor: number;
+  fecha: string;
+  quienes_reciben: string;
+  calificacion_total: number;
+  notas_personal: string;
+  notas_campanas: string;
+  notas_conclusiones: string;
+}
 
 // Tipos para los ítems y subcategorías
 type Calificacion = 0 | 100 | null;
@@ -285,9 +311,24 @@ const initialCategories: Categoria[] = [
 ];
 
 const Audit = () => {
+  const { user } = useAuth();
   const [categories, setCategories] = useState(initialCategories);
-  // Estado para navegación de pestañas
+  const [usuarios, setUsuarios] = useState<Usuario[]>([]);
+  const [usuariosTienda, setUsuariosTienda] = useState<Usuario[]>([]);
+  const [tiendas, setTiendas] = useState<Tienda[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [step, setStep] = useState(1);
+  const [auditInfoSaved, setAuditInfoSaved] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  
+  // Estado para los datos de la auditoría
+  const [auditInfo, setAuditInfo] = useState({
+    id_tienda: '',
+    id_auditor: '',
+    quienes_reciben: '',
+    fecha: new Date().toISOString().split('T')[0]
+  });
 
   // Estado para los cuadros de texto de la segunda pestaña
   const [extraNotes, setExtraNotes] = useState({
@@ -296,6 +337,48 @@ const Audit = () => {
     locativos: '',
     conclusiones: ''
   });
+
+  // Cargar tiendas y usuarios cuando se monta el componente
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        // Cargar tiendas
+        const { data: tiendasData, error: tiendasError } = await supabase
+          .from('tiendas')
+          .select('id_tienda, nombre')
+          .order('nombre');
+        
+        if (tiendasError) throw tiendasError;
+        setTiendas(tiendasData || []);
+
+        // Cargar todos los usuarios
+        const { data: usuariosData, error: usuariosError } = await supabase
+          .from('usuarios')
+          .select('id_usuario, nombre, rol, id_tienda')
+          .order('nombre');
+
+        if (usuariosError) throw usuariosError;
+        setUsuarios(usuariosData || []);
+      } catch (err) {
+        console.error('Error cargando datos:', err);
+        setError('Error cargando datos iniciales');
+      }
+    };
+
+    fetchData();
+  }, []);
+
+  // Actualizar usuarios de la tienda cuando se selecciona una tienda
+  useEffect(() => {
+    if (auditInfo.id_tienda) {
+      const usuariosFiltrados = usuarios.filter(u => 
+        u.id_tienda === parseInt(auditInfo.id_tienda)
+      );
+      setUsuariosTienda(usuariosFiltrados);
+    } else {
+      setUsuariosTienda([]);
+    }
+  }, [auditInfo.id_tienda, usuarios]);
 
   // Estado para imágenes del checklist final
   const checklistImages = [
@@ -344,25 +427,173 @@ const Audit = () => {
     });
   };
 
-  // Estado para datos de auditoría
-  const [auditInfo, setAuditInfo] = useState({
-    nombreAuditor: '',
-    tienda: '',
-    fecha: '',
-    quienesReciben: ''
-  });
-  const [auditInfoSaved, setAuditInfoSaved] = useState(false);
-
+  // Guarda los cambios del formulario de datos
   // Maneja cambios en el formulario de datos
-  const handleAuditInfoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleAuditInfoChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     setAuditInfo(prev => ({ ...prev, [name]: value }));
   };
 
+  // Función para guardar la auditoría en Supabase
+  const saveAuditoria = async () => {
+    setIsSaving(true);
+    setError(null);
+    
+    try {
+      if (!user) throw new Error('Usuario no autenticado');
+      
+      // Verificar la sesión actual
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError) {
+        console.error('Error de sesión:', sessionError);
+        throw new Error('Error al verificar la sesión');
+      }
+      
+      if (!session) {
+        throw new Error('No hay sesión activa');
+      }
+      
+      console.log('Usuario actual:', session.user);
+      
+      // 1. Insertar la auditoría principal
+      const { data: auditData, error: auditError } = await supabase
+        .from('auditorias')
+        .insert({
+          id_tienda: parseInt(auditInfo.id_tienda),
+          id_auditor: parseInt(auditInfo.id_auditor),
+          quienes_reciben: auditInfo.quienes_reciben,
+          fecha: auditInfo.fecha,
+          calificacion_total: getCalificacionTotalTienda(),
+          notas_personal: extraNotes.personal,
+          notas_campanas: extraNotes.campanasTienda,
+          notas_conclusiones: extraNotes.conclusiones
+        })
+        .select();
+
+      if (auditError) {
+        console.error('Error al guardar auditoría:', auditError);
+        throw new Error('Error al guardar la auditoría principal');
+      }
+      
+      if (!auditData || auditData.length === 0) {
+        throw new Error('No se pudo crear la auditoría principal');
+      }
+      
+      const auditId = auditData[0].id_auditoria;
+      
+      // 2. Insertar las categorías
+      for (const categoria of categories) {
+        console.log('Insertando categoría:', categoria.nombre);
+        
+        // Construir el objeto de categoría
+        const categoriaData = {
+          id_auditoria: auditId,
+          nombre_categoria: categoria.nombre.trim(),
+          peso: categoria.peso,
+          promedio: getCategoriaPromedio(categoria)
+        };
+        
+        console.log('Datos de categoría a insertar:', categoriaData);
+        
+        const { data: catData, error: catError } = await supabase
+          .from('auditoria_categorias')
+          .insert(categoriaData)
+          .select();
+
+        if (catError) {
+          console.error('Error al guardar categoría:', catError);
+          throw new Error(`Error al guardar la categoría ${categoria.nombre}`);
+        }
+
+        if (!catData || catData.length === 0) {
+          throw new Error(`No se pudo crear la categoría ${categoria.nombre}`);
+        }
+
+          // 3. Insertar las subcategorías y sus items
+          for (const subcat of categoria.subcategorias) {
+            console.log('Insertando subcategoría:', subcat.nombre, 'para categoría:', categoria.nombre);
+            
+            // Construir el objeto de subcategoría
+            const subcategoriaData = {
+              id_auditoria_categoria: catData[0].id_auditoria_categoria,
+              nombre_subcategoria: subcat.nombre.trim(),
+              promedio: getSubcategoriaTotal(subcat)
+            };
+            
+            console.log('Datos de subcategoría a insertar:', subcategoriaData);
+            
+            const { data: subcatData, error: subcatError } = await supabase
+              .from('auditoria_subcategorias')
+              .insert(subcategoriaData)
+              .select();          if (subcatError) {
+            console.error('Error al guardar subcategoría:', subcatError);
+            throw new Error(`Error al guardar la subcategoría ${subcat.nombre}`);
+          }
+
+          if (!subcatData || subcatData.length === 0) {
+            throw new Error(`No se pudo crear la subcategoría ${subcat.nombre}`);
+          }
+
+          // 4. Insertar los items
+          const itemsToInsert = subcat.items.map(item => ({
+            id_auditoria_subcategoria: subcatData[0].id_auditoria_subcategoria,
+            item_label: item.label.trim(),
+            calificacion: item.calificacion || 0,
+            novedad: item.novedad ? item.novedad.trim() : ''
+          }));
+
+          console.log('Items a insertar para subcategoría:', subcat.nombre, itemsToInsert);
+
+          const { data: itemsData, error: itemsError } = await supabase
+            .from('auditoria_items')
+            .insert(itemsToInsert)
+            .select();
+
+          if (itemsError) {
+            console.error('Error al guardar items:', itemsError);
+            throw new Error(`Error al guardar los items de ${subcat.nombre}`);
+          }
+        }
+      }
+
+      // 5. Guardar las fotos
+      if (Object.keys(uploadedChecklistImages).length > 0) {
+        for (const [tipo, urls] of Object.entries(uploadedChecklistImages)) {
+          for (const url of urls) {
+            const { error: fotoError } = await supabase
+              .from('auditoria_fotos')
+              .insert({
+                id_auditoria: auditId,
+                tipo_foto: tipo,
+                url_foto: url
+              });
+
+            if (fotoError) {
+              console.error('Error al guardar foto:', fotoError);
+              throw new Error(`Error al guardar foto de tipo ${tipo}`);
+            }
+          }
+        }
+      }
+
+      setAuditInfoSaved(true);
+      return true;
+    } catch (err) {
+      console.error('Error guardando auditoría:', err);
+      setError(err instanceof Error ? err.message : 'Error inesperado al guardar la auditoría');
+      return false;
+    } finally {
+      setIsSaving(false);
+    }
+  };
   // Maneja guardar datos de auditoría
-  const handleAuditInfoSave = (e: React.FormEvent) => {
+  const handleAuditInfoSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    setAuditInfoSaved(true);
+    
+    const success = await saveAuditoria();
+    if (success) {
+      setAuditInfoSaved(true);
+    }
   };
 
 
@@ -440,20 +671,59 @@ const Audit = () => {
           <h2 className="text-lg font-bold mb-4 text-primary-600">Datos de la auditoría</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Nombre de quien realiza la auditoría</label>
-              <input type="text" name="nombreAuditor" value={auditInfo.nombreAuditor} onChange={handleAuditInfoChange} required className="w-full border rounded px-2 py-1" />
+              <label className="block text-sm font-medium text-gray-700 mb-1">Auditor</label>
+              <select 
+                name="id_auditor" 
+                value={auditInfo.id_auditor} 
+                onChange={handleAuditInfoChange}
+                required 
+                className="w-full border rounded px-2 py-1"
+              >
+                <option value="">Selecciona un auditor</option>
+                {usuarios.map(usuario => (
+                  <option key={usuario.id_usuario} value={usuario.id_usuario}>
+                    {usuario.nombre}
+                  </option>
+                ))}
+              </select>
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Tienda</label>
-              <input type="text" name="tienda" value={auditInfo.tienda} onChange={handleAuditInfoChange} required className="w-full border rounded px-2 py-1" />
+              <select 
+                name="id_tienda" 
+                value={auditInfo.id_tienda} 
+                onChange={handleAuditInfoChange}
+                required 
+                className="w-full border rounded px-2 py-1"
+              >
+                <option value="">Selecciona una tienda</option>
+                {tiendas.map(tienda => (
+                  <option key={tienda.id_tienda} value={tienda.id_tienda}>
+                    {tienda.nombre}
+                  </option>
+                ))}
+              </select>
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Fecha</label>
               <input type="date" name="fecha" value={auditInfo.fecha} onChange={handleAuditInfoChange} required className="w-full border rounded px-2 py-1" />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Quienes reciben la auditoría</label>
-              <input type="text" name="quienesReciben" value={auditInfo.quienesReciben} onChange={handleAuditInfoChange} required className="w-full border rounded px-2 py-1" />
+              <label className="block text-sm font-medium text-gray-700 mb-1">Quien recibe la auditoría</label>
+              <select
+                name="quienes_reciben"
+                value={auditInfo.quienes_reciben}
+                onChange={handleAuditInfoChange}
+                required
+                className="w-full border rounded px-2 py-1"
+              >
+                <option value="">Selecciona quien recibe</option>
+                {usuariosTienda.map(usuario => (
+                  <option key={usuario.id_usuario} value={usuario.nombre}>
+                    {usuario.nombre}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
           <button type="submit" className="bg-primary-600 text-white px-4 py-2 rounded font-semibold">Guardar y continuar</button>
@@ -477,10 +747,10 @@ const Audit = () => {
               <div className="bg-gray-50 border rounded-lg p-4 mb-6">
                 <h2 className="text-md font-bold text-primary-700 mb-2">Datos de la auditoría</h2>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                  <div><span className="font-semibold">Auditor:</span> {auditInfo.nombreAuditor}</div>
-                  <div><span className="font-semibold">Tienda:</span> {auditInfo.tienda}</div>
+                  <div><span className="font-semibold">Auditor:</span> {usuarios.find(u => u.id_usuario.toString() === auditInfo.id_auditor)?.nombre || ''}</div>
+                  <div><span className="font-semibold">Tienda:</span> {tiendas.find(t => t.id_tienda.toString() === auditInfo.id_tienda)?.nombre || ''}</div>
                   <div><span className="font-semibold">Fecha:</span> {auditInfo.fecha}</div>
-                  <div><span className="font-semibold">Quienes reciben:</span> {auditInfo.quienesReciben}</div>
+                  <div><span className="font-semibold">Responsable:</span> {auditInfo.quienes_reciben}</div>
                 </div>
               </div>
               <p className="text-gray-600 mb-6">Checklist por categorías y subcategorías. Califica cada ítem con ✔️ o ❌, agrega novedades y revisa el puntaje total por subcategoría, el promedio de la categoría principal y la calificación total de la tienda.</p>

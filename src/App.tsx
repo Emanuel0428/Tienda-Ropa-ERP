@@ -15,9 +15,9 @@ import Profile from './pages/Profile';
 import Settings from './pages/Settings';
 
 import Stores from './pages/Stores';
+import Users from './pages/Users';
 
 // Componentes placeholder para las rutas faltantes
-const Users = () => <div className="p-6 mt-10"><h1 className="text-2xl font-bold">Gestión de Usuarios</h1><p className="text-gray-600 mt-2">Administración de usuarios y roles</p></div>;
 const Analytics = () => <div className="p-6 mt-10"><h1 className="text-2xl font-bold">Analíticas Avanzadas</h1><p className="text-gray-600 mt-2">Reportes y análisis detallados</p></div>;
 const Incidents = () => <div className="p-6 mt-10"><h1 className="text-2xl font-bold">Registro de Novedades</h1><p className="text-gray-600 mt-2">Gestión de incidentes y reportes</p></div>;
 const Schedule = () => <div className="p-6 mt-10"><h1 className="text-2xl font-bold">Control de Horarios</h1><p className="text-gray-600 mt-2">Seguimiento de asistencia y puntualidad</p></div>;

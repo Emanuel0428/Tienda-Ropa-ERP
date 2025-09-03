@@ -5,13 +5,14 @@ import { Button } from '../components/ui/Button';
 import { Modal } from '../components/ui/Modal';
 
 interface Store {
-  id: number;
+  id_tienda: number;
   nombre: string;
   direccion: string;
   ciudad: string;
-  telefono: string;
-  meta_mensual: number;
+  id_admin: number | null;
+  id_asesora: number | null;
   created_at: string;
+  meta_mensual: number;
 }
 
 const Stores: React.FC = () => {
@@ -19,11 +20,10 @@ const Stores: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [formData, setFormData] = useState<Omit<Store, 'id' | 'created_at'>>({
+  const [formData, setFormData] = useState({
     nombre: '',
     direccion: '',
     ciudad: '',
-    telefono: '',
     meta_mensual: 0
   });
 
@@ -63,23 +63,39 @@ const Stores: React.FC = () => {
     setError(null);
 
     try {
-      const { data, error } = await supabase
+      // Validamos los datos antes de enviar
+      if (!formData.nombre || !formData.direccion || !formData.ciudad) {
+        throw new Error('Por favor completa todos los campos requeridos');
+      }
+
+      // Preparamos los datos asegurándonos que meta_mensual sea un número válido
+      const storeData = {
+        ...formData,
+        meta_mensual: formData.meta_mensual ? Number(formData.meta_mensual) : 0
+      };
+
+      // Intentamos crear la tienda
+      const { error: insertError } = await supabase
         .from('tiendas')
-        .insert([formData])
-        .select()
-        .single();
+        .insert([storeData]);
 
-      if (error) throw error;
+      if (insertError) {
+        console.error('Error de inserción:', insertError);
+        throw new Error('Error al crear la tienda. Por favor intenta de nuevo.');
 
-      setStores(prev => [...prev, data]);
+      }
+
+      // Si la inserción fue exitosa, actualizamos la UI
+      await fetchStores();
       setIsModalOpen(false);
       setFormData({
         nombre: '',
         direccion: '',
         ciudad: '',
-        telefono: '',
         meta_mensual: 0
       });
+      setError('Tienda creada exitosamente');
+      setTimeout(() => setError(null), 3000);
     } catch (err: any) {
       console.error('Error creando tienda:', err);
       setError(err.message);
@@ -98,20 +114,23 @@ const Stores: React.FC = () => {
       </div>
 
       {error && (
-        <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-md text-red-600">
+        <div className={`mb-4 p-4 border rounded-md ${
+          error === 'Tienda creada exitosamente' 
+            ? 'bg-green-50 border-green-200 text-green-600'
+            : 'bg-red-50 border-red-200 text-red-600'
+        }`}>
           {error}
         </div>
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {stores.map(store => (
-          <Card key={store.id} className="p-4">
+          <Card key={store.id_tienda} className="p-4">
             <h3 className="text-lg font-semibold text-gray-800 mb-2">{store.nombre}</h3>
             <div className="space-y-2 text-sm text-gray-600">
               <p><span className="font-medium">Dirección:</span> {store.direccion}</p>
               <p><span className="font-medium">Ciudad:</span> {store.ciudad}</p>
-              <p><span className="font-medium">Teléfono:</span> {store.telefono}</p>
-              <p><span className="font-medium">Meta Mensual:</span> ${store.meta_mensual.toLocaleString()}</p>
+              <p><span className="font-medium">Meta Mensual:</span> ${store.meta_mensual?.toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) ?? '0,00'}</p>
             </div>
           </Card>
         ))}
@@ -165,35 +184,9 @@ const Stores: React.FC = () => {
             />
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Teléfono
-            </label>
-            <input
-              type="tel"
-              name="telefono"
-              value={formData.telefono}
-              onChange={handleInputChange}
-              required
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-primary-500"
-            />
-          </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Meta Mensual ($)
-            </label>
-            <input
-              type="number"
-              name="meta_mensual"
-              value={formData.meta_mensual}
-              onChange={handleInputChange}
-              required
-              min="0"
-              step="1000"
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-primary-500"
-            />
-          </div>
+
+
 
           <div className="flex justify-end gap-2 mt-6">
             <Button
