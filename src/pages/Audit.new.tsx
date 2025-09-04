@@ -4,8 +4,8 @@ import { useAuth } from '../hooks/useAuth';
 
 // Interfaces para la base de datos
 interface Usuario {
-  id_usuario: number;
   id: string;
+  email: string;
   nombre: string;
   rol: string;
   id_tienda: number | null;
@@ -378,7 +378,7 @@ const Audit = () => {
         // Cargar usuarios
         const { data: usuariosData, error: usuariosError } = await supabase
           .from('usuarios')
-          .select('id_usuario, id, nombre, rol, id_tienda')
+          .select('id, email, nombre, rol, id_tienda')
           .order('nombre');
 
         if (usuariosError) throw usuariosError;
@@ -578,7 +578,7 @@ const Audit = () => {
           .from('auditoria_categorias')
           .insert({
             id_auditoria: currentAuditId,
-            nombre_categoria: categoria.nombre,
+            nombre: categoria.nombre,
             peso: categoria.peso,
             promedio: getCategoriaPromedio(categoria)
           })
@@ -593,7 +593,7 @@ const Audit = () => {
             .from('auditoria_subcategorias')
             .insert({
               id_auditoria_categoria: catData[0].id_auditoria_categoria,
-              nombre_subcategoria: subcat.nombre,
+              nombre: subcat.nombre,
               promedio: getSubcategoriaTotal(subcat)
             })
             .select();
@@ -604,7 +604,7 @@ const Audit = () => {
           // Guardar items
           const itemsToInsert = subcat.items.map(item => ({
             id_auditoria_subcategoria: subcatData[0].id_auditoria_subcategoria,
-            item_label: item.label,
+            item_texto: item.label,
             calificacion: item.calificacion || 0,
             novedad: item.novedad
           }));
@@ -673,7 +673,7 @@ const Audit = () => {
                 <label className="block text-sm font-medium text-gray-700 mb-1">Auditor</label>
                 <input 
                   type="text"
-                  value={usuarios.find(u => u.id === user?.id)?.nombre || 'Cargando...'}
+                  value={user?.email || ''}
                   readOnly
                   className="w-full border rounded px-2 py-1 bg-gray-100"
                   placeholder="Usuario actual"
@@ -770,7 +770,7 @@ const Audit = () => {
               <div className="bg-gray-50 border rounded-lg p-4 mb-6">
                 <h2 className="text-md font-bold text-primary-700 mb-2">Datos de la auditoría</h2>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                  <div><span className="font-semibold">Auditor:</span> {usuarios.find(u => u.id === user?.id)?.nombre || 'Cargando...'}</div>
+                  <div><span className="font-semibold">Auditor:</span> {user?.email || ''}</div>
                   <div>
                     <span className="font-semibold">Tienda:</span> {tiendas.find(t => t.id_tienda.toString() === auditInfo.id_tienda)?.nombre || ''}
                   </div>
