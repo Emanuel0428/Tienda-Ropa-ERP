@@ -1,11 +1,13 @@
 import { supabase } from '../supabaseClient';
 import { useState, useEffect } from 'react';
 import { useAuth } from '../hooks/useAuth';
+import { Modal } from '../components/ui/Modal';
+import { Button } from '../components/ui/Button';
 
 // Interfaces para la base de datos
 interface Usuario {
-  id_usuario: number;
   id: string;
+  id_usuario: number;
   nombre: string;
   rol: string;
   id_tienda: number | null;
@@ -325,7 +327,7 @@ const Audit = () => {
   const [step, setStep] = useState(1);
   const [auditInfoSaved, setAuditInfoSaved] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [currentAuditId, setCurrentAuditId] = useState<string | null>(null);
+  const [currentAuditId, setCurrentAuditId] = useState<number | null>(null);
 
   // Estado para los datos de la auditoría
   const [auditInfo, setAuditInfo] = useState({
@@ -378,11 +380,17 @@ const Audit = () => {
         // Cargar usuarios
         const { data: usuariosData, error: usuariosError } = await supabase
           .from('usuarios')
-          .select('id_usuario, id, nombre, rol, id_tienda')
+          .select('id, id_usuario, nombre, rol, id_tienda')
           .order('nombre');
 
         if (usuariosError) throw usuariosError;
-        setUsuarios(usuariosData || []);
+        setUsuarios((usuariosData || []).map(usuario => ({
+          id: usuario.id,
+          id_usuario: usuario.id_usuario,
+          nombre: usuario.nombre,
+          rol: usuario.rol,
+          id_tienda: usuario.id_tienda,
+        })));
       } catch (err) {
         console.error('Error cargando datos:', err);
         setError(err instanceof Error ? err.message : 'Error cargando datos iniciales');
@@ -442,6 +450,19 @@ const Audit = () => {
     });
   };
 
+  // Estado para manejar el modal de auditoría existente
+  const [existingAudit, setExistingAudit] = useState<any>(null);
+  const [showExistingAuditModal, setShowExistingAuditModal] = useState(false);
+
+  // Función para continuar con una auditoría existente
+  const handleContinueExisting = () => {
+    if (existingAudit) {
+      setCurrentAuditId(Number(existingAudit.id_auditoria));
+      setAuditInfoSaved(true);
+      setShowExistingAuditModal(false);
+    }
+  };
+
   // Guarda los datos iniciales de la auditoría
   const handleAuditInfoSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -455,6 +476,25 @@ const Audit = () => {
       if (userError) throw userError;
       if (!currentUser) throw new Error('No hay usuario autenticado');
 
+      // Primero verificamos si ya existe una auditoría para esta tienda en esta fecha
+      const { data: existingData, error: existingError } = await supabase
+        .from('auditorias')
+        .select()
+        .eq('id_tienda', parseInt(auditInfo.id_tienda))
+        .eq('fecha', auditInfo.fecha)
+        .limit(1)
+        .maybeSingle();
+
+      if (existingError) throw existingError;
+
+      if (existingData) {
+        setExistingAudit(existingData);
+        setShowExistingAuditModal(true);
+        setIsSaving(false);
+        return;
+      }
+
+      // Insertar la nueva auditoría
       const { data, error } = await supabase
         .from('auditorias')
         .insert({
@@ -468,13 +508,17 @@ const Audit = () => {
           notas_campanas: '',
           notas_conclusiones: ''
         })
-        .select()
+        .select('id_auditoria')
         .single();
 
       if (error) throw error;
       if (!data) throw new Error('No se pudo crear la auditoría');
 
-      setCurrentAuditId(data.id_auditoria);
+      if (data.id_auditoria) {
+        setCurrentAuditId(Number(data.id_auditoria));
+      } else {
+        throw new Error('No se recibió un ID de auditoría válido');
+      }
       setAuditInfoSaved(true);
     } catch (err) {
       console.error('Error guardando información inicial:', err);
@@ -558,7 +602,8 @@ const Audit = () => {
 
     setIsSaving(true);
     try {
-      // Actualizar la auditoría principal
+
+  // Actualizar la auditoría principal
       const { error: updateError } = await supabase
         .from('auditorias')
         .update({
@@ -574,40 +619,82 @@ const Audit = () => {
 
       // Guardar categorías y sus elementos
       for (const categoria of categories) {
+        // Verificar que tenemos un currentAuditId válido
+        if (!currentAuditId) {
+          throw new Error('ID de auditoría no válido');
+        }
+
+        const promedioCat = getCategoriaPromedio(categoria);
+        const categoriaData = {
+          id_auditoria: Number(currentAuditId),
+          nombre_categoria: categoria.nombre || '',
+          peso: Number(categoria.peso || 0),
+          promedio: isNaN(promedioCat) ? 0 : promedioCat
+        };
+
+        // Verificar datos antes de insertar
+        console.log('Datos de categoría a insertar:', categoriaData);
+        console.log('Tipo de id_auditoria:', typeof categoriaData.id_auditoria);
+        console.log('Tipo de peso:', typeof categoriaData.peso);
+        console.log('Tipo de promedio:', typeof categoriaData.promedio);
+
         const { data: catData, error: catError } = await supabase
           .from('auditoria_categorias')
-          .insert({
-            id_auditoria: currentAuditId,
-            nombre_categoria: categoria.nombre,
-            peso: categoria.peso,
-            promedio: getCategoriaPromedio(categoria)
-          })
-          .select();
+          .insert(categoriaData)
+          .select('*');
 
-        if (catError) throw catError;
+        if (catError) {
+          console.error('Error al crear categoría:', catError);
+          throw catError;
+        }
         if (!catData || !catData[0]) throw new Error('Error al crear categoría');
 
         // Guardar subcategorías
         for (const subcat of categoria.subcategorias) {
+          // Verificar que tenemos un id_auditoria_categoria válido
+          if (!catData?.[0]?.id_auditoria_categoria) {
+            throw new Error('ID de categoría no válido');
+          }
+
+          const promedio = getSubcategoriaTotal(subcat);
+          const subcategoriaData = {
+            id_auditoria_categoria: catData[0].id_auditoria_categoria,
+            nombre_subcategoria: subcat.nombre || '',
+            promedio: isNaN(promedio) ? 0 : promedio
+          };
+
+          // Verificar datos antes de insertar
+          console.log('Datos de subcategoría a insertar:', subcategoriaData);
+          console.log('Tipo de id_auditoria_categoria:', typeof subcategoriaData.id_auditoria_categoria);
+          console.log('Tipo de promedio:', typeof subcategoriaData.promedio);
+
+          if (!subcategoriaData.id_auditoria_categoria || isNaN(subcategoriaData.id_auditoria_categoria)) {
+            throw new Error('ID de categoría no válido para subcategoría');
+          }
+
           const { data: subcatData, error: subcatError } = await supabase
             .from('auditoria_subcategorias')
-            .insert({
-              id_auditoria_categoria: catData[0].id_auditoria_categoria,
-              nombre_subcategoria: subcat.nombre,
-              promedio: getSubcategoriaTotal(subcat)
-            })
-            .select();
+            .insert(subcategoriaData)
+            .select('*');
 
-          if (subcatError) throw subcatError;
+          if (subcatError) {
+            console.error('Error al crear subcategoría:', subcatError);
+            throw subcatError;
+          }
           if (!subcatData || !subcatData[0]) throw new Error('Error al crear subcategoría');
 
           // Guardar items
-          const itemsToInsert = subcat.items.map(item => ({
-            id_auditoria_subcategoria: subcatData[0].id_auditoria_subcategoria,
-            item_label: item.label,
-            calificacion: item.calificacion || 0,
-            novedad: item.novedad
-          }));
+          const itemsToInsert = subcat.items.map((item, index) => {
+            const itemTimestamp = Date.now();
+            const itemId = Math.floor(itemTimestamp % 1000000) + index; // Usar los últimos 6 dígitos + índice
+            return {
+              id_auditoria_item: itemId,
+              id_auditoria_subcategoria: subcatData[0].id_auditoria_subcategoria,
+              item_label: item.label,
+              calificacion: item.calificacion || 0,
+              novedad: item.novedad || ''  // Aseguramos que novedad nunca sea null
+            };
+          });
 
           const { error: itemsError } = await supabase
             .from('auditoria_items')
@@ -623,9 +710,9 @@ const Audit = () => {
           supabase
             .from('auditoria_fotos')
             .insert({
-              id_auditoria: currentAuditId,
-              tipo_foto: tipo,
-              url_foto: url
+              id_auditoria: Number(currentAuditId),
+              tipo_foto: tipo || '',
+              url_foto: url || ''
             })
         )
       );
@@ -650,6 +737,35 @@ const Audit = () => {
 
   return (
     <div className="p-6 mt-10 max-w-4xl mx-auto">
+      {showExistingAuditModal && existingAudit && (
+        <Modal
+          title="Auditoría Existente"
+          isOpen={showExistingAuditModal}
+          onClose={() => setShowExistingAuditModal(false)}
+        >
+          <div className="p-6">
+            <h3 className="text-lg font-semibold mb-4">Auditoría Existente</h3>
+            <p className="mb-4">
+              Ya existe una auditoría para la tienda en la fecha {existingAudit.fecha}.
+              ¿Deseas continuar con la auditoría existente o crear una nueva?
+            </p>
+            <div className="flex justify-end gap-4">
+              <Button
+                onClick={() => setShowExistingAuditModal(false)}
+                variant="secondary"
+              >
+                Crear Nueva
+              </Button>
+              <Button
+                onClick={handleContinueExisting}
+                variant="primary"
+              >
+                Continuar Existente
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
       <h1 className="text-2xl font-bold mb-6">Auditoría de Tienda</h1>
       
       {error && (
@@ -673,7 +789,7 @@ const Audit = () => {
                 <label className="block text-sm font-medium text-gray-700 mb-1">Auditor</label>
                 <input 
                   type="text"
-                  value={usuarios.find(u => u.id === user?.id)?.nombre || 'Cargando...'}
+                  value={user?.email || ''}
                   readOnly
                   className="w-full border rounded px-2 py-1 bg-gray-100"
                   placeholder="Usuario actual"
@@ -770,7 +886,7 @@ const Audit = () => {
               <div className="bg-gray-50 border rounded-lg p-4 mb-6">
                 <h2 className="text-md font-bold text-primary-700 mb-2">Datos de la auditoría</h2>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                  <div><span className="font-semibold">Auditor:</span> {usuarios.find(u => u.id === user?.id)?.nombre || 'Cargando...'}</div>
+                  <div><span className="font-semibold">Auditor:</span> {user?.email || ''}</div>
                   <div>
                     <span className="font-semibold">Tienda:</span> {tiendas.find(t => t.id_tienda.toString() === auditInfo.id_tienda)?.nombre || ''}
                   </div>
