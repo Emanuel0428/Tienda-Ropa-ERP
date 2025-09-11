@@ -1,7 +1,7 @@
 {
-  "name": "Tienda Ropa ERP - Sistema de Gestión",
-  "short_name": "Tienda ERP",
-  "description": "Sistema de gestión completo para tiendas de ropa",
+  "name": "GMCO",
+  "short_name": "GMCO",
+  "description": "Sistema de gestión GMCO",
   "start_url": "/",
   "display": "standalone",
   "orientation": "portrait-primary",
