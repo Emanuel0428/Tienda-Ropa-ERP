@@ -8,7 +8,8 @@ const Auth: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState({
     nombre: '',
-    rol: 'asesor', // Rol por defecto
+    email: '',
+    rol: 'asesora', // Rol por defecto
     id_tienda: '',
     fecha_nacimiento: '',
     celular: '',
@@ -50,19 +51,51 @@ const Auth: React.FC = () => {
       if (isRegister) {
         // Registro de nuevo usuario
         console.log('📝 Registrando nuevo usuario...');
-        const { nombre, rol, id_tienda, fecha_nacimiento, celular, password } = form;
+        const { nombre, email, rol, id_tienda, fecha_nacimiento, celular, password } = form;
+        
+        // Asegurar que el rol sea válido
+        const rolValido = rol || 'asesora';
+        console.log('🔍 Rol a usar:', rolValido);
+        
+        // Formatear el número de teléfono para formato internacional
+        let telefonoFormateado = celular.trim();
+        
+        // Validar que sea un número válido
+        if (!/^\+?\d{10,15}$/.test(telefonoFormateado.replace(/\s/g, ''))) {
+          setError('El número de celular debe tener entre 10 y 15 dígitos');
+          return;
+        }
+        
+        // Si el número no tiene código de país, agregar +57 (Colombia)
+        if (!telefonoFormateado.startsWith('+')) {
+          // Remover cualquier espacio y agregar +57
+          telefonoFormateado = telefonoFormateado.replace(/\s/g, '');
+          if (telefonoFormateado.length === 10) {
+            telefonoFormateado = `+57${telefonoFormateado}`;
+          } else if (telefonoFormateado.length < 10) {
+            setError('El número de celular debe tener al menos 10 dígitos');
+            return;
+          }
+        }
+        
+        console.log('📱 Teléfono original:', celular);
+        console.log('📱 Teléfono formateado:', telefonoFormateado);
         
         // Crear usuario en Supabase Auth
         const { data: authData, error: signUpError } = await supabase.auth.signUp({
-          email: celular + '@tienda.com',
+          email: email,
           password,
           options: {
             data: { 
+              display_name: nombre,
+              full_name: nombre,
+              phone: telefonoFormateado,
+              phone_number: telefonoFormateado, // Campo alternativo
               nombre, 
-              rol, 
+              rol: rolValido, 
               id_tienda: parseInt(id_tienda), 
               fecha_nacimiento, 
-              celular 
+              celular: telefonoFormateado
             }
           }
         });
@@ -74,6 +107,32 @@ const Auth: React.FC = () => {
         }
 
         if (authData.user) {
+          console.log('✅ Usuario de auth creado:', authData.user.id);
+          
+          // Intentar actualizar el perfil con el teléfono
+          try {
+            const { error: updateError } = await supabase.auth.updateUser({
+              data: {
+                phone: telefonoFormateado,
+                phone_number: telefonoFormateado,
+                user_metadata: {
+                  phone: telefonoFormateado,
+                  phone_number: telefonoFormateado,
+                  display_name: nombre,
+                  full_name: nombre
+                }
+              }
+            });
+            
+            if (updateError) {
+              console.warn('⚠️ No se pudo actualizar el perfil:', updateError.message);
+            } else {
+              console.log('✅ Perfil actualizado con teléfono');
+            }
+          } catch (updateErr) {
+            console.warn('⚠️ Error actualizando perfil:', updateErr);
+          }
+          
           // Insertar datos adicionales en tabla usuarios
           const { error: dbError } = await supabase
             .from('usuarios')
@@ -81,10 +140,10 @@ const Auth: React.FC = () => {
               {
                 id: authData.user.id,
                 nombre,
-                rol,
+                rol: rolValido,
                 id_tienda: parseInt(id_tienda),
                 fecha_nacimiento,
-                celular
+                celular: telefonoFormateado
               }
             ]);
 
@@ -97,7 +156,8 @@ const Auth: React.FC = () => {
             // Limpiar formulario
             setForm({
               nombre: '',
-              rol: '',
+              email: '',
+              rol: 'asesora',
               id_tienda: '',
               fecha_nacimiento: '',
               celular: '',
@@ -109,21 +169,22 @@ const Auth: React.FC = () => {
       } else {
         // Inicio de sesión
         console.log('🔐 Iniciando sesión...');
-        const { celular, password } = form;
+        const { email, password } = form;
         
-        if (!celular || !password) {
+        if (!email || !password) {
           setError('Por favor completa todos los campos');
           return;
         }
 
-        await signIn(celular, password);
+        await signIn(email, password);
         console.log('✅ Login exitoso');
         setSuccess('Inicio de sesión exitoso');
         
         // Limpiar formulario
         setForm({
           nombre: '',
-          rol: '',
+          email: '',
+          rol: 'asesora',
           id_tienda: '',
           fecha_nacimiento: '',
           celular: '',
@@ -169,9 +230,25 @@ const Auth: React.FC = () => {
                     placeholder="Nombre completo"
                   />
                 </div>
+
+                <div>
+                  <label htmlFor="email" className="block text-sm font-medium text-gray-700">
+                    Correo electrónico
+                  </label>
+                  <input
+                    id="email"
+                    name="email"
+                    type="email"
+                    required={isRegister}
+                    value={form.email}
+                    onChange={handleChange}
+                    className="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-primary-600 focus:border-primary-500 focus:z-10 sm:text-sm"
+                    placeholder="correo@ejemplo.com"
+                  />
+                </div>
                 
-                {/* El rol es fijo como asesor */}
-                <input type="hidden" name="rol" value="asesor" />
+                {/* El rol es fijo como asesora */}
+                <input type="hidden" name="rol" value="asesora" />
                 
                 <div>
                   <label htmlFor="id_tienda" className="block text-sm font-medium text-gray-700">
@@ -211,21 +288,41 @@ const Auth: React.FC = () => {
               </>
             )}
             
-            <div>
-              <label htmlFor="celular" className="block text-sm font-medium text-gray-700">
-                Celular
-              </label>
-              <input
-                id="celular"
-                name="celular"
-                type="text"
-                required
-                value={form.celular}
-                onChange={handleChange}
-                className="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-primary-600 focus:border-primary-500 focus:z-10 sm:text-sm"
-                placeholder="Número de celular"
-              />
-            </div>
+            {isRegister && (
+              <div>
+                <label htmlFor="celular" className="block text-sm font-medium text-gray-700">
+                  Celular
+                </label>
+                <input
+                  id="celular"
+                  name="celular"
+                  type="tel"
+                  required={isRegister}
+                  value={form.celular}
+                  onChange={handleChange}
+                  className="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-primary-600 focus:border-primary-500 focus:z-10 sm:text-sm"
+                  placeholder="3001234567 (sin +57)"
+                />
+              </div>
+            )}
+            
+            {!isRegister && (
+              <div>
+                <label htmlFor="email" className="block text-sm font-medium text-gray-700">
+                  Correo electrónico
+                </label>
+                <input
+                  id="email"
+                  name="email"
+                  type="email"
+                  required={!isRegister}
+                  value={form.email}
+                  onChange={handleChange}
+                  className="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-primary-600 focus:border-primary-500 focus:z-10 sm:text-sm"
+                  placeholder="correo@ejemplo.com"
+                />
+              </div>
+            )}
             
             <div>
               <label htmlFor="password" className="block text-sm font-medium text-gray-700">
@@ -285,7 +382,8 @@ const Auth: React.FC = () => {
                 setSuccess('');
                 setForm({
                   nombre: '',
-                  rol: '',
+                  email: '',
+                  rol: 'asesora',
                   id_tienda: '',
                   fecha_nacimiento: '',
                   celular: '',

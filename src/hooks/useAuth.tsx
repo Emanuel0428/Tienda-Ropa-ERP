@@ -5,7 +5,7 @@ import { supabase } from '../supabaseClient';
 interface AuthContextType {
   user: User | null;
   loading: boolean;
-  signIn: (celular: string, password: string) => Promise<void>;
+  signIn: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
 }
 
@@ -145,13 +145,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, []);
 
-  const signIn = async (celular: string, password: string) => {
+  const signIn = async (email: string, password: string) => {
     try {
       setLoading(true);
       console.log('🔐 Iniciando sesión...');
       
       const { data, error } = await supabase.auth.signInWithPassword({
-        email: celular + '@tienda.com',
+        email: email,
         password: password
       });
 
