@@ -8,7 +8,7 @@ interface User {
   id_usuario: number;
   id: string;
   nombre: string;
-  rol: 'admin' | 'coordinador' | 'asesora' | 'auditor';
+  rol: 'admin' | 'coordinador' | 'asesora' | 'auditor' | 'gerencia';
   celular: string;
   fecha_nacimiento: string;
   id_tienda: number | null;
@@ -29,8 +29,18 @@ const Users = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<EditUserForm | null>(null);
   const [tiendas, setTiendas] = useState<{ id_tienda: number; nombre: string; }[]>([]);
+  const [newUser, setNewUser] = useState({
+    nombre: '',
+    rol: 'asesora' as 'admin' | 'coordinador' | 'asesora' | 'auditor' | 'gerencia',
+    celular: '',
+    fecha_nacimiento: '',
+    id_tienda: '',
+    email: '',
+    password: ''
+  });
 
   // Cargar usuarios y tiendas
   useEffect(() => {
@@ -135,6 +145,83 @@ const Users = () => {
     }
   };
 
+  const handleCreateUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      setError(null);
+
+      // Validaciones
+      if (!newUser.email || !newUser.password || !newUser.nombre || !newUser.rol) {
+        throw new Error('Todos los campos marcados son requeridos');
+      }
+
+      // 1. Crear usuario en Supabase Auth
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email: newUser.email,
+        password: newUser.password,
+        options: {
+          data: {
+            full_name: newUser.nombre,
+            role: newUser.rol
+          }
+        }
+      });
+
+      if (authError) throw authError;
+      if (!authData.user) throw new Error('Error al crear usuario en autenticación');
+
+      console.log('✅ Usuario creado en Auth:', authData.user.id);
+
+      // 2. Crear registro en tabla usuarios
+      const { error: dbError } = await supabase
+        .from('usuarios')
+        .insert({
+          id: authData.user.id, // UUID del usuario de auth
+          nombre: newUser.nombre,
+          rol: newUser.rol,
+          celular: newUser.celular || null,
+          fecha_nacimiento: newUser.fecha_nacimiento || null,
+          id_tienda: newUser.id_tienda ? parseInt(newUser.id_tienda) : null,
+        });
+
+      if (dbError) {
+        console.error('Error insertando en tabla usuarios:', dbError);
+        throw dbError;
+      }
+
+      console.log('✅ Usuario creado en base de datos');
+
+      // 3. Limpiar formulario y cerrar modal
+      setNewUser({
+        nombre: '',
+        rol: 'asesora',
+        celular: '',
+        fecha_nacimiento: '',
+        id_tienda: '',
+        email: '',
+        password: ''
+      });
+      setIsCreateModalOpen(false);
+      
+      // 4. Recargar lista de usuarios
+      await fetchUsers();
+      
+      alert('Usuario creado exitosamente');
+
+    } catch (error) {
+      console.error('Error creando usuario:', error);
+      setError((error as Error).message);
+    }
+  };
+
+  const handleNewUserChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const { name, value } = e.target;
+    setNewUser(prev => ({
+      ...prev,
+      [name]: value
+    }));
+  };
+
   if (loading) {
     return <div className="flex justify-center items-center h-screen">Cargando usuarios...</div>;
   }
@@ -145,7 +232,15 @@ const Users = () => {
 
   return (
     <div className="p-6">
-      <h1 className="text-2xl font-bold mb-6">Usuarios</h1>
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-2xl font-bold">Usuarios</h1>
+        <Button 
+          onClick={() => setIsCreateModalOpen(true)}
+          className="bg-blue-600 hover:bg-blue-700 text-white"
+        >
+          + Crear Nuevo Usuario
+        </Button>
+      </div>
       
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {users.map(user => (
@@ -275,6 +370,174 @@ const Users = () => {
                 className="bg-primary-600 text-white"
               >
                 Guardar cambios
+              </Button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {/* Modal de crear usuario */}
+      {isCreateModalOpen && (
+        <Modal
+          title="Crear Nuevo Usuario"
+          isOpen={isCreateModalOpen}
+          onClose={() => {
+            setIsCreateModalOpen(false);
+            setNewUser({
+              nombre: '',
+              rol: 'asesora',
+              celular: '',
+              fecha_nacimiento: '',
+              id_tienda: '',
+              email: '',
+              password: ''
+            });
+          }}
+        >
+          <form onSubmit={handleCreateUser} className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Nombre completo *
+                </label>
+                <input
+                  type="text"
+                  name="nombre"
+                  value={newUser.nombre}
+                  onChange={handleNewUserChange}
+                  required
+                  className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="Ej: María García"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Email *
+                </label>
+                <input
+                  type="email"
+                  name="email"
+                  value={newUser.email}
+                  onChange={handleNewUserChange}
+                  required
+                  className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="usuario@empresa.com"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Contraseña *
+                </label>
+                <input
+                  type="password"
+                  name="password"
+                  value={newUser.password}
+                  onChange={handleNewUserChange}
+                  required
+                  minLength={6}
+                  className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="Mínimo 6 caracteres"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Rol *
+                </label>
+                <select
+                  name="rol"
+                  value={newUser.rol}
+                  onChange={handleNewUserChange}
+                  required
+                  className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                >
+                  <option value="asesora">Asesora</option>
+                  <option value="coordinador">Coordinador</option>
+                  <option value="auditor">Auditor</option>
+                  <option value="gerencia">Gerencia</option>
+                  <option value="admin">Administrador</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Celular
+                </label>
+                <input
+                  type="tel"
+                  name="celular"
+                  value={newUser.celular}
+                  onChange={handleNewUserChange}
+                  className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="3001234567"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Fecha de nacimiento
+                </label>
+                <input
+                  type="date"
+                  name="fecha_nacimiento"
+                  value={newUser.fecha_nacimiento}
+                  onChange={handleNewUserChange}
+                  className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Tienda
+                </label>
+                <select
+                  name="id_tienda"
+                  value={newUser.id_tienda}
+                  onChange={handleNewUserChange}
+                  className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                >
+                  <option value="">Seleccionar tienda</option>
+                  {tiendas.map(tienda => (
+                    <option key={tienda.id_tienda} value={tienda.id_tienda}>
+                      {tienda.nombre}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {error && (
+              <div className="text-red-600 text-sm bg-red-50 p-3 rounded-md">
+                {error}
+              </div>
+            )}
+
+            <div className="flex justify-end space-x-3 pt-4">
+              <Button
+                type="button"
+                onClick={() => {
+                  setIsCreateModalOpen(false);
+                  setNewUser({
+                    nombre: '',
+                    rol: 'asesora',
+                    celular: '',
+                    fecha_nacimiento: '',
+                    id_tienda: '',
+                    email: '',
+                    password: ''
+                  });
+                }}
+                className="bg-gray-200 text-gray-800 hover:bg-gray-300"
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="submit"
+                className="bg-blue-600 text-white hover:bg-blue-700"
+              >
+                Crear Usuario
               </Button>
             </div>
           </form>

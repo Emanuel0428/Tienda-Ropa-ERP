@@ -40,6 +40,7 @@ const Audit = () => {
     handleCalificacionChange,
     handleNovedadChange,
     handleContinueExisting,
+    handleCreateNewAuditForce,
     handleAuditInfoSave,
     handleFinalSave,
     
@@ -77,7 +78,7 @@ const Audit = () => {
             </p>
             <div className="flex justify-end gap-4">
               <Button
-                onClick={() => setShowExistingAuditModal(false)}
+                onClick={handleCreateNewAuditForce}
                 variant="secondary"
               >
                 Crear Nueva

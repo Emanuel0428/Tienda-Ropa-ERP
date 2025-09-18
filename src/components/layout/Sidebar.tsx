@@ -16,7 +16,8 @@ import {
   TrendingUp,
   Search,
   Menu,
-  X
+  X,
+  BarChart
 } from 'lucide-react';
 import { User } from '../../types';
 
@@ -51,7 +52,8 @@ const Sidebar: React.FC<SidebarProps> = ({ user }) => {
       baseItems.splice(2, 0, 
         { id: 'stores', label: 'Tiendas', icon: Store, path: '/stores' },
         { id: 'users', label: 'Usuarios', icon: Users, path: '/users' },
-        { id: 'analytics', label: 'Analíticas', icon: TrendingUp, path: '/analytics' }
+        { id: 'analytics', label: 'Analíticas', icon: TrendingUp, path: '/analytics' },
+        { id: 'statistics', label: 'Estadísticas', icon: BarChart, path: '/statistics' }
       );
       baseItems.push({ id: 'audit', label: 'Auditoría', icon: Search, path: '/audit' });
     } else if (user?.role === 'coordinador') {

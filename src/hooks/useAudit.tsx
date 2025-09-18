@@ -183,6 +183,71 @@ export const useAudit = () => {
     }
   };
 
+  const handleCreateNewAuditForce = async () => {
+    // Cerrar el modal primero
+    setShowExistingAuditModal(false);
+    
+    // Forzar la creación de una nueva auditoría
+    // Esta vez con un flag para indicar que debe crear una nueva
+    await createNewAuditDirect();
+  };
+
+  const createNewAuditDirect = async () => {
+    if (!user?.id) {
+      setError('Usuario no autenticado');
+      return;
+    }
+
+    setIsSaving(true);
+    setError(null);
+
+    try {
+      const currentUser = user;
+      
+      console.log('🚀 Creando nueva auditoría FORZADA con datos:', {
+        id_tienda: parseInt(auditInfo.id_tienda),
+        id_auditor: currentUser.id,
+        fecha: auditInfo.fecha,
+        quienes_reciben: auditInfo.quienes_reciben
+      });
+      
+      // Insertar la nueva auditoría (sin especificar id_auditoria)
+      const { data, error } = await supabase
+        .from('auditorias')
+        .insert({
+          id_tienda: parseInt(auditInfo.id_tienda),
+          id_auditor: currentUser.id,
+          fecha: auditInfo.fecha,
+          quienes_reciben: auditInfo.quienes_reciben,
+          calificacion_total: 0,
+          notas_personal: '',
+          notas_campanas: '',
+          notas_conclusiones: '',
+          estado: 'en_progreso'
+        })
+        .select('id_auditoria, id_auditoria_custom')
+        .single();
+
+      console.log('📊 Respuesta de Supabase (FORZADA):', { data, error });
+
+      if (error) throw error;
+      if (!data) throw new Error('No se pudo crear la auditoría');
+
+      if (data.id_auditoria) {
+        setCurrentAuditId(Number(data.id_auditoria));
+        console.log('✅ Nueva auditoría creada con ID:', data.id_auditoria, 'Custom ID:', data.id_auditoria_custom);
+      } else {
+        throw new Error('No se recibió un ID de auditoría válido');
+      }
+      setAuditInfoSaved(true);
+    } catch (err) {
+      console.error('Error creando nueva auditoría forzada:', err);
+      setError(err instanceof Error ? err.message : 'Error al crear la nueva auditoría');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const handleAuditInfoSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isSaving) return;
@@ -213,35 +278,22 @@ export const useAudit = () => {
         return;
       }
 
-      // Generar ID personalizado para la auditoría
-      const fecha = new Date(auditInfo.fecha);
-      const mes = (fecha.getMonth() + 1).toString().padStart(2, '0');
-      const año = fecha.getFullYear().toString();
-      const tienda = auditInfo.id_tienda.padStart(2, '0');
+      // Generar ID personalizado para la auditoría - REMOVIDO
+      // Ahora se genera automáticamente con el trigger de la base de datos
       
-      // Verificar si ya existe una auditoría con este formato base para determinar el intento
-      const baseId = mes + año + tienda;
-      let intento = 1;
-      let auditId = parseInt(baseId + intento.toString().padStart(2, '0'));
+      console.log('🚀 Intentando crear auditoría con datos:', {
+        id_tienda: parseInt(auditInfo.id_tienda),
+        id_auditor: currentUser.id,
+        fecha: auditInfo.fecha,
+        quienes_reciben: auditInfo.quienes_reciben
+      });
       
-      // Buscar si ya existe una auditoría con este ID
-      while (true) {
-        const { data: existingAuditId } = await supabase
-          .from('auditorias')
-          .select('id_auditoria')
-          .eq('id_auditoria', auditId)
-          .maybeSingle();
-          
-        if (!existingAuditId) break;
-        intento++;
-        auditId = parseInt(baseId + intento.toString().padStart(2, '0'));
-      }
-
-      // Insertar la nueva auditoría con ID personalizado
+      // Insertar la nueva auditoría (sin especificar id_auditoria)
       const { data, error } = await supabase
         .from('auditorias')
         .insert({
-          id_auditoria: auditId,
+          // NO especificamos id_auditoria - se auto-genera
+          // NO especificamos id_auditoria_custom - se auto-genera con el trigger
           id_tienda: parseInt(auditInfo.id_tienda),
           id_auditor: currentUser.id, // UUID de auth.users
           fecha: auditInfo.fecha,
@@ -252,8 +304,10 @@ export const useAudit = () => {
           notas_conclusiones: '',
           estado: 'en_progreso'
         })
-        .select('id_auditoria')
+        .select('id_auditoria, id_auditoria_custom')
         .single();
+
+      console.log('📊 Respuesta de Supabase:', { data, error });
 
       if (error) throw error;
       if (!data) throw new Error('No se pudo crear la auditoría');
@@ -438,6 +492,7 @@ export const useAudit = () => {
     handleCalificacionChange,
     handleNovedadChange,
     handleContinueExisting,
+    handleCreateNewAuditForce,
     handleAuditInfoSave,
     handleFinalSave,
     

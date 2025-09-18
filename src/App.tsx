@@ -13,6 +13,7 @@ import Audit from './pages/Audit';
 import Auth from './pages/Auth';
 import Profile from './pages/Profile';
 import Settings from './pages/Settings';
+import Statistics from './pages/Statistics';
 
 import Stores from './pages/Stores';
 import Users from './pages/Users';
@@ -74,6 +75,7 @@ function App() {
             <Route path="/inventory" element={<Inventory />} />
             <Route path="/stores" element={<Stores />} />
             <Route path="/users" element={<Users />} />
+            <Route path="/statistics" element={<Statistics />} />
             <Route path="/audit" element={<Audit />} />
             <Route path="/analytics" element={<Analytics />} />
             <Route path="/incidents" element={<Incidents />} />
