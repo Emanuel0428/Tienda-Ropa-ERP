@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Modal } from '../components/ui/Modal';
 import { Button } from '../components/ui/Button';
@@ -7,10 +7,10 @@ import { AuditInfoForm } from '../components/audit/AuditInfoForm';
 import { AuditCategories } from '../components/audit/AuditCategories';
 import { AuditNotes } from '../components/audit/AuditNotes';
 import { AuditImageChecklist } from '../components/audit/AuditImageChecklist';
+import { AuditHistoryModal } from '../components/audit/AuditHistoryModal';
 import { checklistImages } from '../constants/auditCategories';
 
 const Audit = () => {
-  const [step, setStep] = useState(1);
   const navigate = useNavigate();
   
   // Usar el hook personalizado para manejar toda la lógica de auditoría
@@ -22,15 +22,14 @@ const Audit = () => {
     error,
     isSaving,
     auditInfoSaved,
+    currentStep,
     auditInfo,
     extraNotes,
     uploadedChecklistImages,
-    existingAudit,
-    showExistingAuditModal,
+    existingAudits,
+    showAuditHistoryModal,
+    setShowAuditHistoryModal,
     showSuccessMessage,
-    
-    // Setters
-    setShowExistingAuditModal,
     setShowSuccessMessage,
     
     // Handlers
@@ -39,10 +38,13 @@ const Audit = () => {
     handleChecklistImageChange,
     handleCalificacionChange,
     handleNovedadChange,
-    handleContinueExisting,
-    handleCreateNewAuditForce,
+    handleSelectAudit,
+    handleCreateNew,
     handleAuditInfoSave,
     handleFinalSave,
+    
+    // Setters
+    setCurrentStep,
     
     // Utilidades de cálculo
     getSubcategoriaTotal,
@@ -63,36 +65,14 @@ const Audit = () => {
 
   return (
     <div className="p-6 mt-10 max-w-4xl mx-auto">
-      {/* Modal de auditoría existente */}
-      {showExistingAuditModal && existingAudit && (
-        <Modal
-          title="Auditoría Existente"
-          isOpen={showExistingAuditModal}
-          onClose={() => setShowExistingAuditModal(false)}
-        >
-          <div className="p-6">
-            <h3 className="text-lg font-semibold mb-4">Auditoría Existente</h3>
-            <p className="mb-4">
-              Ya existe una auditoría para la tienda en la fecha {existingAudit.fecha}.
-              ¿Deseas continuar con la auditoría existente o crear una nueva?
-            </p>
-            <div className="flex justify-end gap-4">
-              <Button
-                onClick={handleCreateNewAuditForce}
-                variant="secondary"
-              >
-                Crear Nueva
-              </Button>
-              <Button
-                onClick={handleContinueExisting}
-                variant="primary"
-              >
-                Continuar Existente
-              </Button>
-            </div>
-          </div>
-        </Modal>
-      )}
+      {/* Modal de historial de auditorías */}
+      <AuditHistoryModal
+        isOpen={showAuditHistoryModal}
+        audits={existingAudits}
+        onSelectAudit={handleSelectAudit}
+        onCreateNew={handleCreateNew}
+        onClose={() => setShowAuditHistoryModal(false)}
+      />
 
       {/* Modal de éxito */}
       {showSuccessMessage && (
@@ -189,27 +169,27 @@ const Audit = () => {
           {/* Navegación de pasos */}
           <div className="flex gap-2 mb-6">
             <Button 
-              variant={step === 1 ? 'primary' : 'secondary'}
-              onClick={() => setStep(1)}
+              variant={currentStep === 1 ? 'primary' : 'secondary'}
+              onClick={() => setCurrentStep(1)}
             >
               Auditoría
             </Button>
             <Button 
-              variant={step === 2 ? 'primary' : 'secondary'}
-              onClick={() => setStep(2)}
+              variant={currentStep === 2 ? 'primary' : 'secondary'}
+              onClick={() => setCurrentStep(2)}
             >
               Notas y conclusiones
             </Button>
             <Button 
-              variant={step === 3 ? 'primary' : 'secondary'}
-              onClick={() => setStep(3)}
+              variant={currentStep === 3 ? 'primary' : 'secondary'}
+              onClick={() => setCurrentStep(3)}
             >
               Checklist de imágenes
             </Button>
           </div>
 
           {/* Paso 1: Auditoría */}
-          {step === 1 && (
+          {currentStep === 1 && (
             <>
               <div className="mb-4">
                 <span className="font-semibold text-lg">Calificación total de la tienda: </span>
@@ -241,7 +221,7 @@ const Audit = () => {
           )}
 
           {/* Paso 2: Notas y conclusiones */}
-          {step === 2 && (
+          {currentStep === 2 && (
             <AuditNotes
               extraNotes={extraNotes}
               onExtraNotesChange={handleExtraNotesChange}
@@ -249,7 +229,7 @@ const Audit = () => {
           )}
 
           {/* Paso 3: Checklist de imágenes */}
-          {step === 3 && (
+          {currentStep === 3 && (
             <AuditImageChecklist
               checklistImages={checklistImages}
               uploadedImages={uploadedChecklistImages}
@@ -259,17 +239,17 @@ const Audit = () => {
 
           {/* Botones de navegación y guardado */}
           <div className="flex justify-between mt-6">
-            {step > 1 && (
+            {currentStep > 1 && (
               <Button
-                onClick={() => setStep(step - 1)}
+                onClick={() => setCurrentStep(currentStep - 1)}
                 variant="secondary"
               >
                 Anterior
               </Button>
             )}
-            {step < 3 ? (
+            {currentStep < 3 ? (
               <Button
-                onClick={() => setStep(step + 1)}
+                onClick={() => setCurrentStep(currentStep + 1)}
                 variant="primary"
                 className="ml-auto"
               >

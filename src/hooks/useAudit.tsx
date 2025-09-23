@@ -25,6 +25,7 @@ export const useAudit = () => {
   const [currentAuditId, setCurrentAuditId] = useState<number | null>(null);
   const [auditInfoSaved, setAuditInfoSaved] = useState(false);
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
+  const [currentStep, setCurrentStep] = useState(1);
 
   // Estado para los datos de la auditoría
   const [auditInfo, setAuditInfo] = useState<AuditInfo>({
@@ -43,55 +44,33 @@ export const useAudit = () => {
   // Estado para imágenes del checklist final
   const [uploadedChecklistImages, setUploadedChecklistImages] = useState<UploadedImages>({});
 
-  // Estado para manejar auditoría existente
-  const [existingAudit, setExistingAudit] = useState<any>(null);
-  const [showExistingAuditModal, setShowExistingAuditModal] = useState(false);
+  // Estados para manejar auditorías existentes
+  const [existingAudits, setExistingAudits] = useState<any[]>([]);
+  const [showAuditHistoryModal, setShowAuditHistoryModal] = useState(false);
 
   // Cargar datos iniciales
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const { data: { user: currentUser }, error: userError } = await supabase.auth.getUser();
-        if (userError) throw userError;
-        if (!currentUser) throw new Error('No hay usuario autenticado');
+        // Cargar usuarios
+        const { data: usuariosData } = await supabase.from('usuarios').select('*');
+        if (usuariosData) setUsuarios(usuariosData);
 
         // Cargar tiendas
-        const { data: tiendasData, error: tiendasError } = await supabase
-          .from('tiendas')
-          .select('id_tienda, nombre')
-          .order('nombre');
-        
-        if (tiendasError) throw tiendasError;
-        setTiendas(tiendasData || []);
-
-        // Cargar usuarios
-        const { data: usuariosData, error: usuariosError } = await supabase
-          .from('usuarios')
-          .select('id, id_usuario, nombre, rol, id_tienda')
-          .order('nombre');
-
-        if (usuariosError) throw usuariosError;
-        setUsuarios((usuariosData || []).map(usuario => ({
-          id: usuario.id,
-          id_usuario: usuario.id_usuario,
-          nombre: usuario.nombre,
-          rol: usuario.rol,
-          id_tienda: usuario.id_tienda,
-        })));
-      } catch (err) {
-        console.error('Error cargando datos:', err);
-        setError(err instanceof Error ? err.message : 'Error cargando datos iniciales');
+        const { data: tiendasData } = await supabase.from('tiendas').select('*');
+        if (tiendasData) setTiendas(tiendasData);
+      } catch (error) {
+        console.error('Error cargando datos:', error);
       }
     };
-
     fetchData();
   }, []);
 
-  // Actualizar usuarios de la tienda cuando se selecciona una tienda
+  // Filtrar usuarios por tienda seleccionada
   useEffect(() => {
-    if (auditInfo.id_tienda) {
-      const usuariosFiltrados = usuarios.filter(u => 
-        u.id_tienda === parseInt(auditInfo.id_tienda)
+    if (auditInfo.id_tienda && usuarios.length > 0) {
+      const usuariosFiltrados = usuarios.filter(usuario => 
+        usuario.id_tienda === parseInt(auditInfo.id_tienda)
       );
       setUsuariosTienda(usuariosFiltrados);
     } else {
@@ -99,7 +78,7 @@ export const useAudit = () => {
     }
   }, [auditInfo.id_tienda, usuarios]);
 
-  // Handlers
+  // Handlers para formularios
   const handleAuditInfoChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     setAuditInfo(prev => ({ ...prev, [name]: value }));
@@ -111,100 +90,213 @@ export const useAudit = () => {
   };
 
   const handleChecklistImageChange = (label: string, files: FileList | null) => {
-    if (!files || files.length === 0) return;
-    
-    const newImages: string[] = [];
-    let loaded = 0;
-    
-    Array.from(files).forEach(file => {
+    if (files && files.length > 0) {
+      const file = files[0];
       const reader = new FileReader();
       reader.onload = (e) => {
-        const result = e.target?.result;
-        if (typeof result === 'string') {
-          newImages.push(result);
-        }
-        loaded++;
-        if (loaded === files.length) {
+        if (e.target?.result) {
           setUploadedChecklistImages(prev => ({
             ...prev,
-            [label]: [...(prev[label] || []), ...newImages]
+            [label]: [e.target!.result as string] // Guardar solo la URL como string[]
           }));
         }
       };
       reader.readAsDataURL(file);
-    });
+    } else {
+      setUploadedChecklistImages(prev => {
+        const updated = { ...prev };
+        delete updated[label];
+        return updated;
+      });
+    }
   };
 
+  // Handlers para calificaciones e items
   const handleCalificacionChange = (catId: number, subcatId: number, itemId: number, value: 0 | 100) => {
-    setCategories(categories.map(cat =>
-      cat.id === catId
-        ? {
-            ...cat,
-            subcategorias: cat.subcategorias.map(subcat =>
-              subcat.id === subcatId
-                ? {
-                    ...subcat,
-                    items: subcat.items.map(item =>
-                      item.id === itemId ? { ...item, calificacion: value } : item
-                    )
-                  }
-                : subcat
-            )
-          }
-        : cat
-    ));
+    setCategories(prevCategories => 
+      prevCategories.map(cat => 
+        cat.id === catId 
+          ? {
+              ...cat,
+              subcategorias: cat.subcategorias.map(subcat => 
+                subcat.id === subcatId 
+                  ? {
+                      ...subcat,
+                      items: subcat.items.map(item => 
+                        item.id === itemId 
+                          ? { ...item, calificacion: value }
+                          : item
+                      )
+                    }
+                  : subcat
+              )
+            }
+          : cat
+      )
+    );
   };
 
   const handleNovedadChange = (catId: number, subcatId: number, itemId: number, value: string) => {
-    setCategories(categories.map(cat =>
-      cat.id === catId
-        ? {
-            ...cat,
-            subcategorias: cat.subcategorias.map(subcat =>
-              subcat.id === subcatId
-                ? {
-                    ...subcat,
-                    items: subcat.items.map(item =>
-                      item.id === itemId ? { ...item, novedad: value } : item
-                    )
-                  }
-                : subcat
-            )
-          }
-        : cat
-    ));
+    setCategories(prevCategories => 
+      prevCategories.map(cat => 
+        cat.id === catId 
+          ? {
+              ...cat,
+              subcategorias: cat.subcategorias.map(subcat => 
+                subcat.id === subcatId 
+                  ? {
+                      ...subcat,
+                      items: subcat.items.map(item => 
+                        item.id === itemId 
+                          ? { ...item, novedad: value }
+                          : item
+                      )
+                    }
+                  : subcat
+              )
+            }
+          : cat
+      )
+    );
   };
 
-  const handleContinueExisting = () => {
-    if (existingAudit) {
-      setCurrentAuditId(Number(existingAudit.id_auditoria));
-      setAuditInfoSaved(true);
-      setShowExistingAuditModal(false);
+  // Función para cargar datos de auditoría existente
+  const loadExistingAuditData = async (auditId: number) => {
+    console.log('📊 Cargando datos de auditoría existente:', auditId);
+    
+    try {
+      // Cargar información general de la auditoría
+      const { data: auditData, error: auditError } = await supabase
+        .from('auditoria')
+        .select('*')
+        .eq('id_auditoria', auditId)
+        .single();
+
+      if (auditError) {
+        console.error('Error cargando información de auditoría:', auditError);
+        return;
+      }
+
+      if (auditData) {
+        setAuditInfo({
+          id_tienda: auditData.id_tienda?.toString() || '',
+          quienes_reciben: auditData.quienes_reciben || '',
+          fecha: auditData.fecha_auditoria || new Date().toISOString().split('T')[0]
+        });
+
+        setExtraNotes({
+          personal: auditData.notas_personal || '',
+          campanasTienda: auditData.notas_campanas || '',
+          conclusiones: auditData.conclusiones || ''
+        });
+      }
+
+      // Cargar categorías existentes
+      const { data: categoriasData } = await supabase
+        .from('auditoria_categorias')
+        .select('*')
+        .eq('id_auditoria', auditId);
+
+      if (categoriasData && categoriasData.length > 0) {
+        // Cargar subcategorías existentes  
+        const { data: subcategoriasData } = await supabase
+          .from('auditoria_subcategorias')
+          .select('*')
+          .in('id_auditoria_categoria', categoriasData.map(c => c.id_auditoria_categoria));
+
+        if (subcategoriasData && subcategoriasData.length > 0) {
+          // Cargar items existentes
+          const { data: itemsData } = await supabase
+            .from('auditoria_items') 
+            .select('*')
+            .in('id_auditoria_subcategoria', subcategoriasData.map(s => s.id_auditoria_subcategoria));
+
+          console.log('📋 Datos existentes cargados:', { 
+            categorias: categoriasData.length,
+            subcategorias: subcategoriasData.length, 
+            items: itemsData?.length || 0
+          });
+
+          // Reconstruir el estado de categories con los datos existentes
+          if (itemsData && itemsData.length > 0) {
+            setCategories(prevCategories => 
+              prevCategories.map(categoria => {
+                const categoriaData = categoriasData.find(cd => cd.id_categoria_original === categoria.id);
+                
+                return {
+                  ...categoria,
+                  subcategorias: categoria.subcategorias.map(subcategoria => {
+                    const subcategoriaData = subcategoriasData.find(sd => 
+                      sd.id_auditoria_categoria === categoriaData?.id_auditoria_categoria &&
+                      sd.id_subcategoria_original === subcategoria.id
+                    );
+
+                    return {
+                      ...subcategoria,
+                      items: subcategoria.items.map(item => {
+                        const itemData = itemsData.find(id => 
+                          id.id_auditoria_subcategoria === subcategoriaData?.id_auditoria_subcategoria &&
+                          id.id_item_original === item.id
+                        );
+
+                        if (itemData) {
+                          return {
+                            ...item,
+                            calificacion: itemData.calificacion as 0 | 100,
+                            novedad: itemData.novedad || '',
+                            accionCorrectiva: itemData.accion_correctiva || ''
+                          };
+                        }
+                        return item;
+                      })
+                    };
+                  })
+                };
+              })
+            );
+            console.log('✅ Estado de categorías actualizado con datos existentes');
+          }
+        }
+      } else {
+        console.log('📝 Auditoría vacía, listo para llenar datos');
+      }
+
+    } catch (error) {
+      console.error('❌ Error cargando datos existentes:', error);
     }
   };
 
-  const handleCreateNewAuditForce = async () => {
-    // Cerrar el modal primero
-    setShowExistingAuditModal(false);
+  // Funciones para manejar selección de auditorías
+  const handleSelectAudit = async (selectedAudit: any) => {
+    console.log('🎯 Auditoría seleccionada:', selectedAudit.id_auditoria);
+    setCurrentAuditId(Number(selectedAudit.id_auditoria));
+    await loadExistingAuditData(Number(selectedAudit.id_auditoria));
+    setAuditInfoSaved(true);
+    setCurrentStep(2); // Avanzar al paso de evaluación de categorías
+    setShowAuditHistoryModal(false);
     
-    // Forzar la creación de una nueva auditoría
-    // Esta vez con un flag para indicar que debe crear una nueva
-    await createNewAuditDirect();
+    // Mostrar mensaje de éxito
+    setShowSuccessMessage(true);
+    setTimeout(() => setShowSuccessMessage(false), 3000);
   };
 
-  const createNewAuditDirect = async () => {
+  const handleCreateNew = () => {
+    console.log('🆕 Creando nueva auditoría');
+    setShowAuditHistoryModal(false);
+    // Continuar con el flujo normal de creación
+    createNewAudit();
+  };
+
+  // Función para crear nueva auditoría con ID único
+  const createNewAudit = async () => {
     if (!user?.id) {
       setError('Usuario no autenticado');
+      setIsSaving(false);
       return;
     }
 
-    setIsSaving(true);
-    setError(null);
-
     try {
-      const currentUser = user;
-      
-      // Generar ID formato: YYYYMMDD + ID_TIENDA + NUMERO_AUDITORIA_DEL_DIA
+      // Generar ID único para nueva auditoría
       const now = new Date();
       const year = now.getFullYear();
       const month = (now.getMonth() + 1).toString().padStart(2, '0');
@@ -212,44 +304,41 @@ export const useAudit = () => {
       const fechaStr = `${year}${month}${day}`;
       const tiendaId = parseInt(auditInfo.id_tienda);
       
-      // Consultar cuántas auditorías ya existen hoy para esta tienda
-      const { data: existingAudits, error: countError } = await supabase
-        .from('auditorias')
-        .select('id_auditoria')
-        .eq('id_tienda', tiendaId)
-        .eq('fecha', auditInfo.fecha);
+      // Buscar el próximo ID disponible que NO exista ya
+      let numeroAuditoriaDelDia = 1;
+      let auditId;
+      let exists = true;
       
-      if (countError) {
-        console.error('Error consultando auditorías existentes:', countError);
-        throw countError;
-      }
+      console.log('🔍 Buscando próximo ID disponible para tienda', tiendaId, 'fecha', auditInfo.fecha);
       
-      // Número de auditoría del día (siguiente disponible)
-      const numeroAuditoriaDelDia = (existingAudits?.length || 0) + 1;
-      
-      // Formato final: YYYYMMDD + TIENDA(2 dígitos) + NUMERO(2 dígitos)
-      // Ejemplo: 20250923 + 01 + 01 = 2025092301001
-      const auditId = parseInt(`${fechaStr}${tiendaId.toString().padStart(2, '0')}${numeroAuditoriaDelDia.toString().padStart(3, '0')}`);
-      
-      console.log('🚀 Creando auditoría con ID formato personalizado:', auditId, {
-        fecha: fechaStr,
-        tienda: tiendaId,
-        numeroDelDia: numeroAuditoriaDelDia,
-        auditInfo: {
-          id_tienda: parseInt(auditInfo.id_tienda),
-          id_auditor: currentUser.id,
-          fecha: auditInfo.fecha,
-          quienes_reciben: auditInfo.quienes_reciben
+      while (exists) {
+        auditId = parseInt(`${fechaStr}${tiendaId.toString().padStart(2, '0')}${numeroAuditoriaDelDia.toString().padStart(3, '0')}`);
+        
+        // Verificar si este ID ya existe
+        const { data: existingAudit } = await supabase
+          .from('auditorias')
+          .select('id_auditoria')
+          .eq('id_auditoria', auditId)
+          .single();
+        
+        if (!existingAudit) {
+          exists = false;
+          console.log('✅ ID disponible encontrado:', auditId);
+        } else {
+          numeroAuditoriaDelDia++;
+          console.log('⚠️ ID', auditId, 'ya existe, probando siguiente...');
         }
-      });
-      
-      // Insertar con ID generado por código
+      }
+
+      console.log('🚀 Creando auditoría con ID único verificado:', auditId);
+
+      // Crear nueva auditoría
       const { data, error } = await supabase
         .from('auditorias')
         .insert({
-          id_auditoria: auditId, // ID formato: YYYYMMDDTTAAA
+          id_auditoria: auditId,
           id_tienda: parseInt(auditInfo.id_tienda),
-          id_auditor: currentUser.id,
+          id_auditor: user.id,
           fecha: auditInfo.fecha,
           quienes_reciben: auditInfo.quienes_reciben,
           calificacion_total: 0,
@@ -260,8 +349,6 @@ export const useAudit = () => {
         })
         .select('id_auditoria')
         .single();
-
-      console.log('📊 Respuesta de Supabase:', { data, error });
 
       if (error) throw error;
       if (!data) throw new Error('No se pudo crear la auditoría');
@@ -269,136 +356,85 @@ export const useAudit = () => {
       if (data.id_auditoria) {        
         setCurrentAuditId(Number(data.id_auditoria));
         console.log('✅ Nueva auditoría creada con ID:', data.id_auditoria);
+        setAuditInfoSaved(true);
+        setCurrentStep(2); // Avanzar al siguiente paso
+        setIsSaving(false);
+        
+        // Mostrar mensaje de éxito
+        setShowSuccessMessage(true);
+        setTimeout(() => setShowSuccessMessage(false), 3000);
       } else {
         throw new Error('No se recibió un ID de auditoría válido');
       }
-      setAuditInfoSaved(true);
-    } catch (err) {
-      console.error('Error creando nueva auditoría forzada:', err);
-      setError(err instanceof Error ? err.message : 'Error al crear la nueva auditoría');
-    } finally {
+    } catch (error) {
+      console.error('❌ Error creando nueva auditoría:', error);
+      setError('Error al crear la auditoría');
       setIsSaving(false);
     }
   };
 
+  // Función principal para guardar información de auditoría
   const handleAuditInfoSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isSaving) return;
     
     setIsSaving(true);
+    setError(null);
+
     try {
       if (!user) throw new Error('Usuario no autenticado');
-      
-      const { data: { user: currentUser }, error: userError } = await supabase.auth.getUser();
-      if (userError) throw userError;
-      if (!currentUser) throw new Error('No hay usuario autenticado');
 
-      // Verificar si ya existe una auditoría COMPLETADA para esta tienda en esta fecha
-      // Solo mostramos el modal si hay una auditoría completada, no en progreso
-      const { data: existingData, error: existingError } = await supabase
+      // Verificar auditorías existentes para esta tienda (últimos 30 días)
+      const { data: allAuditsData, error: auditsError } = await supabase
         .from('auditorias')
         .select('*')
         .eq('id_tienda', parseInt(auditInfo.id_tienda))
-        .eq('fecha', auditInfo.fecha)
-        .eq('estado', 'completada') // Solo auditorías completadas
-        .limit(1)
-        .maybeSingle();
+        .gte('fecha', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0])
+        .order('fecha', { ascending: false })
+        .order('id_auditoria', { ascending: false });
 
-      if (existingError) throw existingError;
+      if (auditsError) throw auditsError;
 
-      if (existingData) {
-        setExistingAudit(existingData);
-        setShowExistingAuditModal(true);
+      if (allAuditsData && allAuditsData.length > 0) {
+        // Mostrar historial de auditorías para que el usuario seleccione
+        console.log('📋 Auditorías existentes encontradas:', allAuditsData.length);
+        setExistingAudits(allAuditsData);
+        setShowAuditHistoryModal(true);
         setIsSaving(false);
         return;
       }
 
-      // Generar ID personalizado para la auditoría
-      const now = new Date();
-      const year = now.getFullYear();
-      const month = (now.getMonth() + 1).toString().padStart(2, '0');
-      const day = now.getDate().toString().padStart(2, '0');
-      const fechaStr = `${year}${month}${day}`;
-      const tiendaId = parseInt(auditInfo.id_tienda);
+      // Si no hay auditorías existentes, crear nueva directamente
+      await createNewAudit();
       
-      // Consultar cuántas auditorías ya existen hoy para esta tienda
-      const { data: existingAudits, error: countError } = await supabase
-        .from('auditorias')
-        .select('id_auditoria')
-        .eq('id_tienda', tiendaId)
-        .eq('fecha', auditInfo.fecha);
-      
-      if (countError) {
-        console.error('Error consultando auditorías existentes:', countError);
-        throw countError;
-      }
-      
-      // Número de auditoría del día (siguiente disponible)
-      const numeroAuditoriaDelDia = (existingAudits?.length || 0) + 1;
-      const auditId = parseInt(`${fechaStr}${tiendaId.toString().padStart(2, '0')}${numeroAuditoriaDelDia.toString().padStart(3, '0')}`);
-
-      console.log('🚀 Creando auditoría con ID personalizado:', auditId, {
-        fecha: fechaStr,
-        tienda: tiendaId,
-        numeroDelDia: numeroAuditoriaDelDia,
-        auditInfo: {
-          id_tienda: parseInt(auditInfo.id_tienda),
-          id_auditor: currentUser.id,
-          fecha: auditInfo.fecha,
-          quienes_reciben: auditInfo.quienes_reciben
-        }
-      });
-      
-      // Insertar la nueva auditoría con ID específico
-      const { data, error } = await supabase
-        .from('auditorias')
-        .insert({
-          id_auditoria: auditId, // Especificar el ID generado
-          id_tienda: parseInt(auditInfo.id_tienda),
-          id_auditor: currentUser.id,
-          fecha: auditInfo.fecha,
-          quienes_reciben: auditInfo.quienes_reciben,
-          calificacion_total: 0,
-          notas_personal: '',
-          notas_campanas: '',
-          notas_conclusiones: '',
-          estado: 'en_progreso'
-        })
-        .select('id_auditoria')
-        .single();
-
-      console.log('📊 Respuesta de Supabase:', { data, error });
-
-      if (error) throw error;
-      if (!data) throw new Error('No se pudo crear la auditoría');
-
-      if (data.id_auditoria) {
-        setCurrentAuditId(Number(data.id_auditoria));
-      } else {
-        throw new Error('No se recibió un ID de auditoría válido');
-      }
-      setAuditInfoSaved(true);
-    } catch (err) {
-      console.error('Error guardando información inicial:', err);
-      setError(err instanceof Error ? err.message : 'Error al guardar la información inicial');
-    } finally {
+    } catch (error) {
+      console.error('❌ Error en handleAuditInfoSave:', error);
+      setError('Error al procesar la información de auditoría');
       setIsSaving(false);
     }
   };
 
+  // Función para guardar auditoría final con todas las calificaciones
   const handleFinalSave = async (): Promise<boolean> => {
     if (!currentAuditId) {
-      setError('No se encontró una auditoría en progreso');
+      setError('No hay una auditoría activa');
       return false;
     }
 
     setIsSaving(true);
+    setError(null);
+
     try {
-      // Actualizar la auditoría principal
+      console.log('💾 Iniciando guardado final de auditoría:', currentAuditId);
+
+      // Calcular calificación total
+      const calificacionTotal = getCalificacionTotalTienda(categories);
+
+      // Actualizar información principal de auditoría
       const { error: updateError } = await supabase
         .from('auditorias')
         .update({
-          calificacion_total: getCalificacionTotalTienda(categories),
+          calificacion_total: calificacionTotal,
           notas_personal: extraNotes.personal,
           notas_campanas: extraNotes.campanasTienda,
           notas_conclusiones: extraNotes.conclusiones,
@@ -408,32 +444,13 @@ export const useAudit = () => {
 
       if (updateError) throw updateError;
 
-      // LIMPIAR registros duplicados SIMPLE Y DIRECTO
-      console.log('🧹 Limpieza SIMPLE para auditoría:', currentAuditId);
+      console.log('🔧 Guardando categorías, subcategorías e items...');
       
-      try {
-        // Eliminar registros existentes directamente por ID de auditoría
-        await supabase.from('auditoria_fotos').delete().eq('id_auditoria', Number(currentAuditId));
-        await supabase.from('auditoria_categorias').delete().eq('id_auditoria', Number(currentAuditId));
-        
-        // Esperar que se propaguen los cambios
-        await new Promise(resolve => setTimeout(resolve, 200));
-        
-        console.log('✅ Limpieza SIMPLE completada');
-      } catch (error) {
-        console.log('⚠️ Error en limpieza, continuando:', error);
-      }
-
-      // Generar IDs basados en el patrón: auditoria_id + índices
-      const baseAuditId = currentAuditId.toString(); // "2025092301003"
-      
-      console.log('🔧 Generando categorías con patrón personalizado para auditoría:', baseAuditId);
-      
-      // Guardar categorías, subcategorías e items según la estructura correcta
+      // Guardar categorías, subcategorías e items con IDs automáticos
       for (let catIndex = 0; catIndex < categories.length; catIndex++) {
         const categoria = categories[catIndex];
         
-        // FILTRAR: Solo procesar categorías que tengan subcategorías con items válidos
+        // Filtrar subcategorías que tienen items con calificación
         const subcategoriasValidas = categoria.subcategorias.filter(subcat => 
           subcat.items.some(item => item.calificacion !== null && item.calificacion !== undefined)
         );
@@ -445,180 +462,137 @@ export const useAudit = () => {
         
         const promedioCat = getCategoriaPromedio(categoria);
         
-        // ID categoría: baseAuditId + número de categoría (2 dígitos) simple
-        // Ejemplo: "2025092301003" + "01" = 202509230100301
-        const categoriaId = parseInt(baseAuditId + (catIndex + 1).toString().padStart(2, '0'));
-        
-        console.log('📁 Creando categoría simple:', {
+        console.log('📁 Creando categoría:', {
           index: catIndex + 1,
-          id: categoriaId,
           nombre: categoria.nombre,
-          baseAuditId,
           subcategoriasValidas: subcategoriasValidas.length
         });
         
-        // Insertar categoría con ID personalizado
-        const { error: catError } = await supabase
+        // Insertar categoría con ID automático
+        const { data: categoriaData, error: catError } = await supabase
           .from('auditoria_categorias')
           .insert({
-            id_auditoria_categoria: categoriaId,
             id_auditoria: Number(currentAuditId),
             nombre_categoria: categoria.nombre,
             peso: categoria.peso,
             promedio: promedioCat
-          });
+          })
+          .select('id_auditoria_categoria')
+          .single();
 
         if (catError) {
           console.error('❌ Error al crear categoría:', catError);
-          console.log('⚠️ Saltando categoría con error y continuando...');
-          continue; // Continuar con la siguiente categoría en lugar de fallar todo
+          continue;
         }
-        console.log('✅ Categoría creada:', categoriaId);
 
-        // Insertar subcategorías (solo las que tienen items válidos)
+        if (!categoriaData?.id_auditoria_categoria) {
+          console.error('❌ No se recibió ID de categoría');
+          continue;
+        }
+
+        const categoriaIdReal = categoriaData.id_auditoria_categoria;
+        console.log('✅ Categoría creada con ID:', categoriaIdReal);
+
+        // Procesar subcategorías
         for (let subcatIndex = 0; subcatIndex < subcategoriasValidas.length; subcatIndex++) {
           const subcat = subcategoriasValidas[subcatIndex];
           
-          // FILTRAR: Solo procesar items con calificación válida
+          // Filtrar items válidos
           const itemsValidos = subcat.items.filter(item => 
             item.calificacion !== null && item.calificacion !== undefined
           );
           
-          if (itemsValidos.length === 0) {
-            console.log('⚠️ Saltando subcategoría sin items válidos:', subcat.nombre);
-            continue;
-          }
+          if (itemsValidos.length === 0) continue;
           
           const promedioSubcat = getSubcategoriaTotal(subcat);
           
-          // ID subcategoría: categoriaId + número de subcategoría (2 dígitos) simple
-          const subcatIndexStr = (subcatIndex + 1).toString().padStart(2, '0');
-          const subcategoriaIdStr = categoriaId.toString() + subcatIndexStr;
-          const subcategoriaId = subcategoriaIdStr; // Usar string directamente para evitar problemas BigInt
-          
-          console.log('📂 Creando subcategoría simple:', {
+          console.log('📂 Creando subcategoría:', {
             index: subcatIndex + 1,
-            indexStr: subcatIndexStr,
-            categoriaIdStr: categoriaId.toString(),
-            concatenado: subcategoriaIdStr,
-            id: subcategoriaId,
             nombre: subcat.nombre,
-            categoriaId,
+            categoriaIdReal,
             itemsValidos: itemsValidos.length
           });
           
-          const { error: subcatError } = await supabase
+          // Insertar subcategoría con ID automático
+          const { data: subcategoriaData, error: subcatError } = await supabase
             .from('auditoria_subcategorias')
             .insert({
-              id_auditoria_subcategoria: subcategoriaId, // Usar string directamente
-              id_auditoria_categoria: categoriaId,
+              id_auditoria_categoria: categoriaIdReal,
               nombre_subcategoria: subcat.nombre,
               promedio: promedioSubcat
-            });
+            })
+            .select('id_auditoria_subcategoria')
+            .single();
 
           if (subcatError) {
             console.error('❌ Error al crear subcategoría:', subcatError);
-            console.log('⚠️ Saltando subcategoría con error y continuando...');
-            continue; // Continuar con la siguiente subcategoría en lugar de fallar todo
+            continue;
           }
-          console.log('✅ Subcategoría creada:', subcategoriaId);
 
-          // ESPERAR un momento para asegurar que la subcategoría esté disponible
-          await new Promise(resolve => setTimeout(resolve, 50));
-          
-          console.log('✅ Subcategoría lista para items:', subcategoriaId);
+          if (!subcategoriaData?.id_auditoria_subcategoria) {
+            console.error('❌ No se recibió ID de subcategoría');
+            continue;
+          }
 
-          // Insertar items (solo los válidos)
+          const subcategoriaIdReal = subcategoriaData.id_auditoria_subcategoria;
+          console.log('✅ Subcategoría creada con ID:', subcategoriaIdReal);
+
+          // Insertar items
           for (let itemIndex = 0; itemIndex < itemsValidos.length; itemIndex++) {
             const item = itemsValidos[itemIndex];
             
-            // ID item: subcategoriaId + número de item (2 dígitos) simple
-            const itemIndexStr = (itemIndex + 1).toString().padStart(2, '0');
-            const itemIdStr = subcategoriaId.toString() + itemIndexStr;
-            const itemId = itemIdStr; // Usar string directamente
-            
-            console.log('💾 Insertando item simple:', {
+            console.log('💾 Insertando item:', {
               index: itemIndex + 1,
-              indexStr: itemIndexStr,
-              subcategoriaIdStr: subcategoriaId,
-              concatenado: itemIdStr,
-              id: itemId,
-              subcategoriaId: subcategoriaId,
+              subcategoriaIdReal,
               item: item.label,
-              calificacion: item.calificacion,
-              usuario: user?.id
+              calificacion: item.calificacion
             });
             
-            try {
-              const { error: itemError } = await supabase
-                .from('auditoria_items')
-                .insert({
-                  id_auditoria_item: itemId,
-                  id_auditoria_subcategoria: subcategoriaId,
-                  item_label: item.label,
-                  calificacion: item.calificacion,
-                  novedad: item.novedad || ''
-                });
+            const { error: itemError } = await supabase
+              .from('auditoria_items')
+              .insert({
+                id_auditoria_subcategoria: subcategoriaIdReal,
+                item_label: item.label,
+                calificacion: item.calificacion,
+                novedad: item.novedad || ''
+              });
 
-              if (itemError) {
-                console.error('❌ Error al crear item:', {
-                  error: itemError,
-                  itemId: itemId,
-                  subcategoriaId: subcategoriaId,
-                  itemLabel: item.label,
-                  calificacion: item.calificacion
-                });
-                console.log('⚠️ Saltando item con error y continuando...');
-                continue;
-              } else {
-                console.log('✅ Item creado exitosamente:', itemId);
-              }
-            } catch (error) {
-              console.error('❌ Excepción al crear item:', error);
-              console.log('⚠️ Saltando item con excepción y continuando...');
+            if (itemError) {
+              console.error('❌ Error al crear item:', itemError);
               continue;
+            } else {
+              console.log('✅ Item creado exitosamente');
             }
           }
         }
       }
 
-      // Guardar fotos
+      // Guardar fotos del checklist (si las hay)
       let fotoCounter = 1;
-      const fotoPromises = Object.entries(uploadedChecklistImages).flatMap(([tipo, urls]) =>
-        urls.map(url => {
-          // Generar ID de foto: currentAuditId + contador (3 dígitos)
-          const fotoId = parseInt(currentAuditId.toString() + fotoCounter.toString().padStart(3, '0'));
-          fotoCounter++;
-          
-          return supabase
-            .from('auditoria_fotos')
-            .insert({
-              id_auditoria_foto: fotoId,
-              id_auditoria: Number(currentAuditId),
-              tipo_foto: tipo,
-              url_foto: url
-            });
-        })
-      );
+      for (const [tipo, imageUrls] of Object.entries(uploadedChecklistImages)) {
+        if (imageUrls && imageUrls.length > 0) {
+          // Como ya tenemos las URLs de las imágenes, las guardamos directamente
+          await supabase.from('auditoria_fotos').insert({
+            id_auditoria_foto: parseInt(`${currentAuditId}${fotoCounter.toString().padStart(3, '0')}`),
+            id_auditoria: currentAuditId,
+            tipo_foto: tipo,
+            url_foto: imageUrls[0] // Usar la primera URL
+          });
 
-      const fotoResults = await Promise.all(fotoPromises);
-      const fotoErrors = fotoResults.filter(result => result.error);
-      
-      if (fotoErrors.length > 0) {
-        console.error('Errores al guardar fotos:', fotoErrors);
-        throw new Error('Error al guardar algunas fotos');
+          fotoCounter++;
+        }
       }
 
-      // Mostrar mensaje de éxito
+      console.log('🎉 ¡Auditoría guardada exitosamente!');
       setShowSuccessMessage(true);
-      
-      return true;
-    } catch (err) {
-      console.error('Error guardando auditoría completa:', err);
-      setError(err instanceof Error ? err.message : 'Error al guardar la auditoría');
-      return false;
-    } finally {
       setIsSaving(false);
+      return true;
+
+    } catch (error) {
+      console.error('❌ Error en guardado final:', error);
+      setError('Error al guardar la auditoría');
+      setIsSaving(false);
+      return false;
     }
   };
 
@@ -632,17 +606,14 @@ export const useAudit = () => {
     isSaving,
     currentAuditId,
     auditInfoSaved,
+    showSuccessMessage,
+    currentStep,
     auditInfo,
     extraNotes,
     uploadedChecklistImages,
-    existingAudit,
-    showExistingAuditModal,
-    showSuccessMessage,
-    
-    // Setters
-    setError,
-    setShowExistingAuditModal,
-    setShowSuccessMessage,
+    existingAudits,
+    showAuditHistoryModal,
+    setShowAuditHistoryModal,
     
     // Handlers
     handleAuditInfoChange,
@@ -650,10 +621,14 @@ export const useAudit = () => {
     handleChecklistImageChange,
     handleCalificacionChange,
     handleNovedadChange,
-    handleContinueExisting,
-    handleCreateNewAuditForce,
+    handleSelectAudit,
+    handleCreateNew,
     handleAuditInfoSave,
     handleFinalSave,
+    
+    // Setters adicionales
+    setShowSuccessMessage,
+    setCurrentStep,
     
     // Utilidades de cálculo
     getSubcategoriaTotal,
