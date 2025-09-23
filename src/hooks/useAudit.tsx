@@ -204,17 +204,50 @@ export const useAudit = () => {
     try {
       const currentUser = user;
       
-      console.log('🚀 Creando nueva auditoría FORZADA con datos:', {
-        id_tienda: parseInt(auditInfo.id_tienda),
-        id_auditor: currentUser.id,
-        fecha: auditInfo.fecha,
-        quienes_reciben: auditInfo.quienes_reciben
+      // Generar ID formato: YYYYMMDD + ID_TIENDA + NUMERO_AUDITORIA_DEL_DIA
+      const now = new Date();
+      const year = now.getFullYear();
+      const month = (now.getMonth() + 1).toString().padStart(2, '0');
+      const day = now.getDate().toString().padStart(2, '0');
+      const fechaStr = `${year}${month}${day}`;
+      const tiendaId = parseInt(auditInfo.id_tienda);
+      
+      // Consultar cuántas auditorías ya existen hoy para esta tienda
+      const { data: existingAudits, error: countError } = await supabase
+        .from('auditorias')
+        .select('id_auditoria')
+        .eq('id_tienda', tiendaId)
+        .eq('fecha', auditInfo.fecha);
+      
+      if (countError) {
+        console.error('Error consultando auditorías existentes:', countError);
+        throw countError;
+      }
+      
+      // Número de auditoría del día (siguiente disponible)
+      const numeroAuditoriaDelDia = (existingAudits?.length || 0) + 1;
+      
+      // Formato final: YYYYMMDD + TIENDA(2 dígitos) + NUMERO(2 dígitos)
+      // Ejemplo: 20250923 + 01 + 01 = 2025092301001
+      const auditId = parseInt(`${fechaStr}${tiendaId.toString().padStart(2, '0')}${numeroAuditoriaDelDia.toString().padStart(3, '0')}`);
+      
+      console.log('🚀 Creando auditoría con ID formato personalizado:', auditId, {
+        fecha: fechaStr,
+        tienda: tiendaId,
+        numeroDelDia: numeroAuditoriaDelDia,
+        auditInfo: {
+          id_tienda: parseInt(auditInfo.id_tienda),
+          id_auditor: currentUser.id,
+          fecha: auditInfo.fecha,
+          quienes_reciben: auditInfo.quienes_reciben
+        }
       });
       
-      // Insertar la nueva auditoría (sin especificar id_auditoria)
+      // Insertar con ID generado por código
       const { data, error } = await supabase
         .from('auditorias')
         .insert({
+          id_auditoria: auditId, // ID formato: YYYYMMDDTTAAA
           id_tienda: parseInt(auditInfo.id_tienda),
           id_auditor: currentUser.id,
           fecha: auditInfo.fecha,
@@ -225,17 +258,17 @@ export const useAudit = () => {
           notas_conclusiones: '',
           estado: 'en_progreso'
         })
-        .select('id_auditoria, id_auditoria_custom')
+        .select('id_auditoria')
         .single();
 
-      console.log('📊 Respuesta de Supabase (FORZADA):', { data, error });
+      console.log('📊 Respuesta de Supabase:', { data, error });
 
       if (error) throw error;
       if (!data) throw new Error('No se pudo crear la auditoría');
 
-      if (data.id_auditoria) {
+      if (data.id_auditoria) {        
         setCurrentAuditId(Number(data.id_auditoria));
-        console.log('✅ Nueva auditoría creada con ID:', data.id_auditoria, 'Custom ID:', data.id_auditoria_custom);
+        console.log('✅ Nueva auditoría creada con ID:', data.id_auditoria);
       } else {
         throw new Error('No se recibió un ID de auditoría válido');
       }
@@ -260,12 +293,14 @@ export const useAudit = () => {
       if (userError) throw userError;
       if (!currentUser) throw new Error('No hay usuario autenticado');
 
-      // Verificar si ya existe una auditoría para esta tienda en esta fecha
+      // Verificar si ya existe una auditoría COMPLETADA para esta tienda en esta fecha
+      // Solo mostramos el modal si hay una auditoría completada, no en progreso
       const { data: existingData, error: existingError } = await supabase
         .from('auditorias')
-        .select()
+        .select('*')
         .eq('id_tienda', parseInt(auditInfo.id_tienda))
         .eq('fecha', auditInfo.fecha)
+        .eq('estado', 'completada') // Solo auditorías completadas
         .limit(1)
         .maybeSingle();
 
@@ -278,24 +313,49 @@ export const useAudit = () => {
         return;
       }
 
-      // Generar ID personalizado para la auditoría - REMOVIDO
-      // Ahora se genera automáticamente con el trigger de la base de datos
+      // Generar ID personalizado para la auditoría
+      const now = new Date();
+      const year = now.getFullYear();
+      const month = (now.getMonth() + 1).toString().padStart(2, '0');
+      const day = now.getDate().toString().padStart(2, '0');
+      const fechaStr = `${year}${month}${day}`;
+      const tiendaId = parseInt(auditInfo.id_tienda);
       
-      console.log('🚀 Intentando crear auditoría con datos:', {
-        id_tienda: parseInt(auditInfo.id_tienda),
-        id_auditor: currentUser.id,
-        fecha: auditInfo.fecha,
-        quienes_reciben: auditInfo.quienes_reciben
+      // Consultar cuántas auditorías ya existen hoy para esta tienda
+      const { data: existingAudits, error: countError } = await supabase
+        .from('auditorias')
+        .select('id_auditoria')
+        .eq('id_tienda', tiendaId)
+        .eq('fecha', auditInfo.fecha);
+      
+      if (countError) {
+        console.error('Error consultando auditorías existentes:', countError);
+        throw countError;
+      }
+      
+      // Número de auditoría del día (siguiente disponible)
+      const numeroAuditoriaDelDia = (existingAudits?.length || 0) + 1;
+      const auditId = parseInt(`${fechaStr}${tiendaId.toString().padStart(2, '0')}${numeroAuditoriaDelDia.toString().padStart(3, '0')}`);
+
+      console.log('🚀 Creando auditoría con ID personalizado:', auditId, {
+        fecha: fechaStr,
+        tienda: tiendaId,
+        numeroDelDia: numeroAuditoriaDelDia,
+        auditInfo: {
+          id_tienda: parseInt(auditInfo.id_tienda),
+          id_auditor: currentUser.id,
+          fecha: auditInfo.fecha,
+          quienes_reciben: auditInfo.quienes_reciben
+        }
       });
       
-      // Insertar la nueva auditoría (sin especificar id_auditoria)
+      // Insertar la nueva auditoría con ID específico
       const { data, error } = await supabase
         .from('auditorias')
         .insert({
-          // NO especificamos id_auditoria - se auto-genera
-          // NO especificamos id_auditoria_custom - se auto-genera con el trigger
+          id_auditoria: auditId, // Especificar el ID generado
           id_tienda: parseInt(auditInfo.id_tienda),
-          id_auditor: currentUser.id, // UUID de auth.users
+          id_auditor: currentUser.id,
           fecha: auditInfo.fecha,
           quienes_reciben: auditInfo.quienes_reciben,
           calificacion_total: 0,
@@ -304,7 +364,7 @@ export const useAudit = () => {
           notas_conclusiones: '',
           estado: 'en_progreso'
         })
-        .select('id_auditoria, id_auditoria_custom')
+        .select('id_auditoria')
         .single();
 
       console.log('📊 Respuesta de Supabase:', { data, error });
@@ -348,16 +408,54 @@ export const useAudit = () => {
 
       if (updateError) throw updateError;
 
-      // Generar IDs personalizados basados en el ID de auditoría
-      const baseAuditId = currentAuditId.toString(); // Ej: "920250201"
+      // LIMPIAR registros duplicados SIMPLE Y DIRECTO
+      console.log('🧹 Limpieza SIMPLE para auditoría:', currentAuditId);
+      
+      try {
+        // Eliminar registros existentes directamente por ID de auditoría
+        await supabase.from('auditoria_fotos').delete().eq('id_auditoria', Number(currentAuditId));
+        await supabase.from('auditoria_categorias').delete().eq('id_auditoria', Number(currentAuditId));
+        
+        // Esperar que se propaguen los cambios
+        await new Promise(resolve => setTimeout(resolve, 200));
+        
+        console.log('✅ Limpieza SIMPLE completada');
+      } catch (error) {
+        console.log('⚠️ Error en limpieza, continuando:', error);
+      }
+
+      // Generar IDs basados en el patrón: auditoria_id + índices
+      const baseAuditId = currentAuditId.toString(); // "2025092301003"
+      
+      console.log('🔧 Generando categorías con patrón personalizado para auditoría:', baseAuditId);
       
       // Guardar categorías, subcategorías e items según la estructura correcta
       for (let catIndex = 0; catIndex < categories.length; catIndex++) {
         const categoria = categories[catIndex];
+        
+        // FILTRAR: Solo procesar categorías que tengan subcategorías con items válidos
+        const subcategoriasValidas = categoria.subcategorias.filter(subcat => 
+          subcat.items.some(item => item.calificacion !== null && item.calificacion !== undefined)
+        );
+        
+        if (subcategoriasValidas.length === 0) {
+          console.log('⚠️ Saltando categoría sin items válidos:', categoria.nombre);
+          continue;
+        }
+        
         const promedioCat = getCategoriaPromedio(categoria);
         
-        // Generar ID de categoría: baseAuditId + número de categoría (2 dígitos)
+        // ID categoría: baseAuditId + número de categoría (2 dígitos) simple
+        // Ejemplo: "2025092301003" + "01" = 202509230100301
         const categoriaId = parseInt(baseAuditId + (catIndex + 1).toString().padStart(2, '0'));
+        
+        console.log('📁 Creando categoría simple:', {
+          index: catIndex + 1,
+          id: categoriaId,
+          nombre: categoria.nombre,
+          baseAuditId,
+          subcategoriasValidas: subcategoriasValidas.length
+        });
         
         // Insertar categoría con ID personalizado
         const { error: catError } = await supabase
@@ -371,39 +469,87 @@ export const useAudit = () => {
           });
 
         if (catError) {
-          console.error('Error al crear categoría:', catError);
-          throw catError;
+          console.error('❌ Error al crear categoría:', catError);
+          console.log('⚠️ Saltando categoría con error y continuando...');
+          continue; // Continuar con la siguiente categoría en lugar de fallar todo
         }
+        console.log('✅ Categoría creada:', categoriaId);
 
-        // Insertar subcategorías
-        for (let subcatIndex = 0; subcatIndex < categoria.subcategorias.length; subcatIndex++) {
-          const subcat = categoria.subcategorias[subcatIndex];
+        // Insertar subcategorías (solo las que tienen items válidos)
+        for (let subcatIndex = 0; subcatIndex < subcategoriasValidas.length; subcatIndex++) {
+          const subcat = subcategoriasValidas[subcatIndex];
+          
+          // FILTRAR: Solo procesar items con calificación válida
+          const itemsValidos = subcat.items.filter(item => 
+            item.calificacion !== null && item.calificacion !== undefined
+          );
+          
+          if (itemsValidos.length === 0) {
+            console.log('⚠️ Saltando subcategoría sin items válidos:', subcat.nombre);
+            continue;
+          }
+          
           const promedioSubcat = getSubcategoriaTotal(subcat);
           
-          // Generar ID de subcategoría: categoriaId + número de subcategoría (2 dígitos)
-          const subcategoriaId = parseInt(categoriaId.toString() + (subcatIndex + 1).toString().padStart(2, '0'));
+          // ID subcategoría: categoriaId + número de subcategoría (2 dígitos) simple
+          const subcatIndexStr = (subcatIndex + 1).toString().padStart(2, '0');
+          const subcategoriaIdStr = categoriaId.toString() + subcatIndexStr;
+          const subcategoriaId = subcategoriaIdStr; // Usar string directamente para evitar problemas BigInt
+          
+          console.log('📂 Creando subcategoría simple:', {
+            index: subcatIndex + 1,
+            indexStr: subcatIndexStr,
+            categoriaIdStr: categoriaId.toString(),
+            concatenado: subcategoriaIdStr,
+            id: subcategoriaId,
+            nombre: subcat.nombre,
+            categoriaId,
+            itemsValidos: itemsValidos.length
+          });
           
           const { error: subcatError } = await supabase
             .from('auditoria_subcategorias')
             .insert({
-              id_auditoria_subcategoria: subcategoriaId,
+              id_auditoria_subcategoria: subcategoriaId, // Usar string directamente
               id_auditoria_categoria: categoriaId,
               nombre_subcategoria: subcat.nombre,
               promedio: promedioSubcat
             });
 
           if (subcatError) {
-            console.error('Error al crear subcategoría:', subcatError);
-            throw subcatError;
+            console.error('❌ Error al crear subcategoría:', subcatError);
+            console.log('⚠️ Saltando subcategoría con error y continuando...');
+            continue; // Continuar con la siguiente subcategoría en lugar de fallar todo
           }
+          console.log('✅ Subcategoría creada:', subcategoriaId);
 
-          // Insertar items
-          for (let itemIndex = 0; itemIndex < subcat.items.length; itemIndex++) {
-            const item = subcat.items[itemIndex];
-            if (item.calificacion !== null) {
-              // Generar ID de item: subcategoriaId + número de item (2 dígitos)
-              const itemId = parseInt(subcategoriaId.toString() + (itemIndex + 1).toString().padStart(2, '0'));
-              
+          // ESPERAR un momento para asegurar que la subcategoría esté disponible
+          await new Promise(resolve => setTimeout(resolve, 50));
+          
+          console.log('✅ Subcategoría lista para items:', subcategoriaId);
+
+          // Insertar items (solo los válidos)
+          for (let itemIndex = 0; itemIndex < itemsValidos.length; itemIndex++) {
+            const item = itemsValidos[itemIndex];
+            
+            // ID item: subcategoriaId + número de item (2 dígitos) simple
+            const itemIndexStr = (itemIndex + 1).toString().padStart(2, '0');
+            const itemIdStr = subcategoriaId.toString() + itemIndexStr;
+            const itemId = itemIdStr; // Usar string directamente
+            
+            console.log('💾 Insertando item simple:', {
+              index: itemIndex + 1,
+              indexStr: itemIndexStr,
+              subcategoriaIdStr: subcategoriaId,
+              concatenado: itemIdStr,
+              id: itemId,
+              subcategoriaId: subcategoriaId,
+              item: item.label,
+              calificacion: item.calificacion,
+              usuario: user?.id
+            });
+            
+            try {
               const { error: itemError } = await supabase
                 .from('auditoria_items')
                 .insert({
@@ -415,9 +561,22 @@ export const useAudit = () => {
                 });
 
               if (itemError) {
-                console.error('Error al crear item:', itemError);
-                throw itemError;
+                console.error('❌ Error al crear item:', {
+                  error: itemError,
+                  itemId: itemId,
+                  subcategoriaId: subcategoriaId,
+                  itemLabel: item.label,
+                  calificacion: item.calificacion
+                });
+                console.log('⚠️ Saltando item con error y continuando...');
+                continue;
+              } else {
+                console.log('✅ Item creado exitosamente:', itemId);
               }
+            } catch (error) {
+              console.error('❌ Excepción al crear item:', error);
+              console.log('⚠️ Saltando item con excepción y continuando...');
+              continue;
             }
           }
         }

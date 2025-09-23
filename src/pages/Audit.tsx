@@ -54,7 +54,7 @@ const Audit = () => {
   useEffect(() => {
     if (showSuccessMessage) {
       const timer = setTimeout(() => {
-        navigate('/audit'); // Redirigir a la página de auditorías
+        navigate('/statistics'); // Redirigir a la página de estadísticas
       }, 3000); // Esperar 3 segundos antes de redirigir
 
       return () => clearTimeout(timer);
@@ -126,17 +126,26 @@ const Audit = () => {
               La auditoría se ha guardado correctamente con todas las categorías, items y fotos.
             </p>
             <p className="text-sm text-gray-500 mb-4">
-              Serás redirigido automáticamente en unos segundos...
+              Serás redirigido a estadísticas automáticamente en unos segundos...
             </p>
             <div className="flex justify-center gap-4">
               <Button
                 onClick={() => {
                   setShowSuccessMessage(false);
-                  navigate('/audit');
+                  navigate('/statistics');
                 }}
                 variant="primary"
               >
-                Ver Auditorías
+                Ver Estadísticas
+              </Button>
+              <Button
+                onClick={() => {
+                  setShowSuccessMessage(false);
+                  navigate('/audit');
+                }}
+                variant="secondary"
+              >
+                Nueva Auditoría
               </Button>
               <Button
                 onClick={() => setShowSuccessMessage(false)}
