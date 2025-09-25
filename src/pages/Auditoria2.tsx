@@ -1,6 +1,4 @@
-import React from 'react';
-import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState } from 'react';
 import { Modal } from '../components/ui/Modal';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
@@ -10,7 +8,6 @@ import { supabase } from '../supabaseClient';
 import type { Auditoria, Respuesta } from '../types/audit2';
 
 const Auditoria2 = () => {
-  const navigate = useNavigate();
   const {
     // Estados principales
     categorias,
@@ -26,24 +23,15 @@ const Auditoria2 = () => {
     showSuccessMessage,
     modoRevision,
     
-    // Estados de gestión de preguntas
-    showPreguntaModal,
-    preguntaEditando,
-    subcategoriaSeleccionada,
-    
+
     // Funciones principales
     crearNuevaAuditoria,
-    guardarRespuesta,
     finalizarAuditoria,
     cargarAuditoriaExistente,
     calcularResumen,
     obtenerAuditoriasAnteriores,
     cargarAuditoriaAnterior,
-    
-    // Gestión de preguntas del catálogo
-    agregarPregunta,
-    editarPregunta,
-    eliminarPregunta,
+   
     
     // Handlers
     handleFormularioChange,
@@ -54,9 +42,6 @@ const Auditoria2 = () => {
     // Setters
     setCurrentStep,
     setShowSuccessMessage,
-    setShowPreguntaModal,
-    setPreguntaEditando,
-    setSubcategoriaSeleccionada,
     setError,
     setModoRevision,
     cargarEstructuraCatalogo,
@@ -361,117 +346,61 @@ const Auditoria2 = () => {
           <div className="p-6 space-y-6">
             {categoria.subcategorias.map((subcategoria) => (
               <div key={subcategoria.id} className="border-l-4 border-blue-200 pl-6">
-                <div className="flex justify-between items-center mb-4">
+                <div className="mb-4">
                   <h4 className="text-lg font-semibold text-gray-700">
                     {subcategoria.nombre}
                   </h4>
-                  <Button
-                    onClick={() => {
-                      setSubcategoriaSeleccionada(subcategoria.id);
-                      setShowPreguntaModal(true);
-                    }}
-                    variant="outline"
-                    size="sm"
-                  >
-                    + Agregar Pregunta
-                  </Button>
                 </div>
 
-                <div className="space-y-4">
+                <div className="space-y-2">
                   {subcategoria.preguntas.map((pregunta) => (
-                    <div key={pregunta.id_auditoria_pregunta} className="bg-gray-50 rounded-lg p-4">
-                      <div className="flex justify-between items-start mb-3">
-                        <p className="text-gray-800 font-medium flex-1 mr-4">
+                    <div key={pregunta.id_auditoria_pregunta}>
+                      <div className="flex items-center justify-between py-2 px-3 bg-white rounded border hover:bg-gray-50">
+                        <p className="text-gray-800 text-sm flex-1 mr-4">
                           {pregunta.texto_pregunta}
                         </p>
-                        <div className="flex gap-2">
-                          <Button
+                        <div className="flex gap-2 items-center">
+                          <button
+                            type="button"
                             onClick={() => {
-                              // Convertir AuditoriaPregunta a Pregunta para edición
-                              const preguntaCatalogo = {
-                                id: pregunta.id_pregunta,
-                                subcategoria_id: pregunta.id_subcategoria,
-                                texto_pregunta: pregunta.texto_pregunta,
-                                orden: pregunta.orden,
-                                activo: true,
-                                created_at: pregunta.created_at,
-                                updated_at: pregunta.created_at
-                              };
-                              setPreguntaEditando(preguntaCatalogo);
-                              setShowPreguntaModal(true);
+                              if (modoRevision && modoEdicion) {
+                                handleRespuestaChangeConDeteccion(pregunta.id_auditoria_pregunta, true);
+                              } else if (!modoRevision) {
+                                handleRespuestaChange(pregunta.id_auditoria_pregunta, true);
+                              }
                             }}
-                            variant="outline"
-                            size="sm"
+                            disabled={modoRevision && !modoEdicion}
+                            className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold transition-all duration-200 ${
+                              pregunta.respuesta?.respuesta === true
+                                ? 'bg-green-500 text-white'
+                                : (modoRevision && !modoEdicion)
+                                ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                                : 'bg-gray-200 text-green-600 hover:bg-green-500 hover:text-white cursor-pointer'
+                            }`}
                           >
-                            Editar
-                          </Button>
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-1 gap-4">
-                        {/* Botones de respuesta mejorados con ✓ y ✗ */}
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-3">
-                            Respuesta
-                          </label>
-                          <div className="flex gap-6 justify-center">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                if (modoRevision && modoEdicion) {
-                                  handleRespuestaChangeConDeteccion(pregunta.id_auditoria_pregunta, true);
-                                } else if (!modoRevision) {
-                                  handleRespuestaChange(pregunta.id_auditoria_pregunta, true);
-                                }
-                              }}
-                              disabled={modoRevision && !modoEdicion}
-                              className={`flex flex-col items-center justify-center w-20 h-20 rounded-xl border-2 transition-all duration-200 ${
-                                pregunta.respuesta?.respuesta === true
-                                  ? 'bg-green-500 border-green-600 text-white shadow-lg scale-105'
-                                  : (modoRevision && !modoEdicion)
-                                  ? 'bg-gray-100 border-gray-300 text-gray-400 cursor-not-allowed'
-                                  : 'bg-white border-green-300 text-green-600 hover:bg-green-50 hover:border-green-400 cursor-pointer'
-                              }`}
-                            >
-                              <span className="text-3xl font-bold">✓</span>
-                              <span className="text-xs font-medium mt-1">CUMPLE</span>
-                            </button>
-                            
-                            <button
-                              type="button"
-                              onClick={() => {
-                                if (modoRevision && modoEdicion) {
-                                  handleRespuestaChangeConDeteccion(pregunta.id_auditoria_pregunta, false);
-                                } else if (!modoRevision) {
-                                  handleRespuestaChange(pregunta.id_auditoria_pregunta, false);
-                                }
-                              }}
-                              disabled={modoRevision && !modoEdicion}
-                              className={`flex flex-col items-center justify-center w-20 h-20 rounded-xl border-2 transition-all duration-200 ${
-                                pregunta.respuesta?.respuesta === false
-                                  ? 'bg-red-500 border-red-600 text-white shadow-lg scale-105'
-                                  : (modoRevision && !modoEdicion)
-                                  ? 'bg-gray-100 border-gray-300 text-gray-400 cursor-not-allowed'
-                                  : 'bg-white border-red-300 text-red-600 hover:bg-red-50 hover:border-red-400 cursor-pointer'
-                              }`}
-                            >
-                              <span className="text-3xl font-bold">✗</span>
-                              <span className="text-xs font-medium mt-1">NO CUMPLE</span>
-                            </button>
-                          </div>
-                        </div>
-
-                        {/* Estado visual de la respuesta */}
-                        <div className="flex items-center justify-center">
-                          {pregunta.respuesta?.respuesta === true && (
-                            <Badge variant="success">✓ Cumple</Badge>
-                          )}
-                          {pregunta.respuesta?.respuesta === false && (
-                            <Badge variant="error">✗ No Cumple</Badge>
-                          )}
-                          {pregunta.respuesta === undefined && (
-                            <Badge variant="warning">Sin Respuesta</Badge>
-                          )}
+                            ✓
+                          </button>
+                          
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (modoRevision && modoEdicion) {
+                                handleRespuestaChangeConDeteccion(pregunta.id_auditoria_pregunta, false);
+                              } else if (!modoRevision) {
+                                handleRespuestaChange(pregunta.id_auditoria_pregunta, false);
+                              }
+                            }}
+                            disabled={modoRevision && !modoEdicion}
+                            className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold transition-all duration-200 ${
+                              pregunta.respuesta?.respuesta === false
+                                ? 'bg-red-500 text-white'
+                                : (modoRevision && !modoEdicion)
+                                ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                                : 'bg-gray-200 text-red-600 hover:bg-red-500 hover:text-white cursor-pointer'
+                            }`}
+                          >
+                            ✕
+                          </button>
                         </div>
                       </div>
 
@@ -542,12 +471,14 @@ const Auditoria2 = () => {
                       {/* Comentario opcional para respuestas positivas */}
                       {pregunta.respuesta?.respuesta === true && (
                         <div className="mt-4">
-                          <details className="group">
-                            <summary className="cursor-pointer text-sm text-gray-600 hover:text-gray-800 flex items-center">
-                              <span className="mr-2">📝</span>
-                              Agregar comentario opcional
-                              <span className="ml-2 transform transition-transform group-open:rotate-180">▼</span>
-                            </summary>
+                          {/* No mostrar en modo revisión sin edición */}
+                          {(!modoRevision || modoEdicion) && (
+                            <details className="group">
+                              <summary className="cursor-pointer text-sm text-gray-600 hover:text-gray-800 flex items-center">
+                                <span className="mr-2">📝</span>
+                                Agregar comentario opcional
+                                <span className="ml-2 transform transition-transform group-open:rotate-180">▼</span>
+                              </summary>
                             <div className="mt-3">
                               <textarea
                                 value={pregunta.respuesta.comentario || ''}
@@ -571,6 +502,7 @@ const Auditoria2 = () => {
                               />
                             </div>
                           </details>
+                          )}
                         </div>
                       )}
                     </div>
@@ -578,7 +510,7 @@ const Auditoria2 = () => {
                 </div>
               </div>
             ))}
-          </div>
+          </div> {/* Cierre del div className="p-6 space-y-6" */}
         </Card>
       ))}
     </div>
