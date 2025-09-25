@@ -231,8 +231,8 @@ const Users = () => {
   }
 
   return (
-    <div className="p-6">
-      <div className="flex justify-between items-center mb-6">
+    <div className="py-6 px-6">
+      <div className="flex justify-between items-center mb-6 mt-6">
         <h1 className="text-2xl font-bold">Usuarios</h1>
         <Button 
           onClick={() => setIsCreateModalOpen(true)}

@@ -2,22 +2,18 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
 import { useAuth } from './useAuth';
 import {
-  Categoria,
-  Subcategoria,
+  
   Pregunta,
   Auditoria,
   AuditoriaPregunta,
   Respuesta,
   CategoriaConSubcategorias,
-  SubcategoriaConPreguntas,
-  PreguntaConRespuesta,
   FormularioAuditoria,
   ResumenAuditoria,
   ResumenCategoria,
   NuevaPregunta,
   EditarPregunta,
-  GuardarAuditoriaPayload,
-  AuditoriaCompleta
+  
 } from '../types/audit2';
 
 export const useAudit2 = () => {
@@ -50,7 +46,7 @@ export const useAudit2 = () => {
   const [preguntaEditando, setPreguntaEditando] = useState<Pregunta | null>(null);
   const [subcategoriaSeleccionada, setSubcategoriaSeleccionada] = useState<number | null>(null);
 
-  // Cargar estructura completa del catálogo maestro
+  // Cargar estructura completa del catálogo maestro (SOLO para nuevas auditorías)
   const cargarEstructuraCatalogo = async () => {
     try {
       setIsLoading(true);
@@ -119,6 +115,87 @@ export const useAudit2 = () => {
 
     } catch (error) {
       console.error('❌ Error cargando estructura del catálogo:', error);
+      setError('Error al cargar la estructura de auditoría');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Cargar estructura de auditoría existente (desde auditoria_preguntas)
+  const cargarEstructuraAuditoriaExistente = async (idAuditoria: number) => {
+    try {
+      setIsLoading(true);
+      setError(null);
+
+      console.log('📋 Cargando estructura de auditoría existente...');
+
+      // Cargar categorías y subcategorías
+      const { data: categoriasData } = await supabase
+        .from('categorias')
+        .select('*')
+        .eq('activo', true)
+        .order('orden');
+
+      const { data: subcategoriasData } = await supabase
+        .from('subcategorias')
+        .select('*')
+        .eq('activo', true)
+        .order('orden');
+
+      // Cargar preguntas específicas de esta auditoría
+      const { data: preguntasAuditoriaData, error: preguntasError } = await supabase
+        .from('auditoria_preguntas')
+        .select(`
+          *,
+          respuesta:respuestas(*)
+        `)
+        .eq('id_auditoria', idAuditoria)
+        .order('orden', { ascending: true });
+
+      if (preguntasError) throw preguntasError;
+
+      if (!categoriasData || !subcategoriasData) {
+        throw new Error('No se pudieron cargar las categorías');
+      }
+
+      // Organizar respuestas en Map
+      const respuestasMap = new Map<number, Respuesta>();
+      preguntasAuditoriaData?.forEach(pregunta => {
+        if (pregunta.respuesta && pregunta.respuesta.length > 0) {
+          respuestasMap.set(pregunta.id_auditoria_pregunta, pregunta.respuesta[0]);
+        }
+      });
+
+      // Organizar estructura jerárquica con las preguntas de la auditoría específica
+      const categoriasOrganizadas: CategoriaConSubcategorias[] = categoriasData.map(categoria => ({
+        ...categoria,
+        subcategorias: subcategoriasData
+          .filter(sub => sub.categoria_id === categoria.id)
+          .map(subcategoria => ({
+            ...subcategoria,
+            preguntas: preguntasAuditoriaData
+              ?.filter(pregunta => 
+                pregunta.id_categoria === categoria.id && 
+                pregunta.id_subcategoria === subcategoria.id
+              )
+              .map(pregunta => ({
+                ...pregunta,
+                respuesta: respuestasMap.get(pregunta.id_auditoria_pregunta)
+              })) || []
+          }))
+      }));
+
+      setCategorias(categoriasOrganizadas);
+      setRespuestas(respuestasMap);
+      
+      console.log('✅ Estructura de auditoría existente cargada:', {
+        categorias: categoriasOrganizadas.length,
+        subcategorias: subcategoriasData?.length || 0,
+        preguntas: preguntasAuditoriaData?.length || 0
+      });
+
+    } catch (error) {
+      console.error('❌ Error cargando estructura de auditoría existente:', error);
       setError('Error al cargar la estructura de auditoría');
     } finally {
       setIsLoading(false);
@@ -405,63 +482,10 @@ export const useAudit2 = () => {
 
       if (auditoriaError) throw auditoriaError;
 
-      // 2. Cargar preguntas de la auditoría con sus respuestas
-      const { data: preguntasAuditoriaData, error: preguntasError } = await supabase
-        .from('auditoria_preguntas')
-        .select(`
-          *,
-          respuesta:respuestas(*)
-        `)
-        .eq('id_auditoria', id_auditoria)
-        .order('orden', { ascending: true });
+      // 2. Usar la función específica para cargar estructura de auditoría existente
+      await cargarEstructuraAuditoriaExistente(id_auditoria);
 
-      if (preguntasError) throw preguntasError;
-
-      // 3. Cargar estructura de categorías y subcategorías
-      const { data: categoriasData } = await supabase
-        .from('categorias')
-        .select('*')
-        .eq('activo', true)
-        .order('orden');
-
-      const { data: subcategoriasData } = await supabase
-        .from('subcategorias')
-        .select('*')
-        .eq('activo', true)
-        .order('orden');
-
-      if (!categoriasData || !subcategoriasData) {
-        throw new Error('No se pudieron cargar las categorías');
-      }
-
-      // 4. Organizar respuestas en Map
-      const respuestasMap = new Map<number, Respuesta>();
-      preguntasAuditoriaData?.forEach(pregunta => {
-        if (pregunta.respuesta && pregunta.respuesta.length > 0) {
-          respuestasMap.set(pregunta.id_auditoria_pregunta, pregunta.respuesta[0]);
-        }
-      });
-
-      // 5. Organizar estructura jerárquica con las preguntas de la auditoría específica
-      const categoriasOrganizadas: CategoriaConSubcategorias[] = categoriasData.map(categoria => ({
-        ...categoria,
-        subcategorias: subcategoriasData
-          .filter(sub => sub.categoria_id === categoria.id)
-          .map(subcategoria => ({
-            ...subcategoria,
-            preguntas: preguntasAuditoriaData
-              ?.filter(pregunta => 
-                pregunta.id_categoria === categoria.id && 
-                pregunta.id_subcategoria === subcategoria.id
-              )
-              .map(pregunta => ({
-                ...pregunta,
-                respuesta: respuestasMap.get(pregunta.id_auditoria_pregunta)
-              })) || []
-          }))
-      }));
-
-      // 6. Actualizar formulario con datos de la auditoría
+      // 3. Actualizar formulario con datos de la auditoría
       setFormularioAuditoria({
         id_tienda: auditoriaData.id_tienda.toString(),
         fecha: auditoriaData.fecha,
@@ -469,17 +493,12 @@ export const useAudit2 = () => {
         observaciones: auditoriaData.observaciones || ''
       });
 
-      // 7. Actualizar estados
+      // 4. Actualizar estados
       setModoRevision(true); // Activar modo revisión
       setAuditoriaActual(auditoriaData);
-      setPreguntasAuditoria(preguntasAuditoriaData || []);
-      setRespuestas(respuestasMap);
-      setCategorias(categoriasOrganizadas);
 
       console.log('✅ Auditoría existente cargada correctamente:', {
         id: id_auditoria,
-        preguntas: preguntasAuditoriaData?.length || 0,
-        respuestas: respuestasMap.size,
         fecha: auditoriaData.fecha
       });
 
@@ -741,6 +760,9 @@ export const useAudit2 = () => {
     handleRespuestaChange,
     handleComentarioChange,
     handleAccionCorrectivaChange,
+    
+    // Funciones de carga específicas
+    cargarEstructuraAuditoriaExistente,
     
     // Setters
     setCurrentStep,

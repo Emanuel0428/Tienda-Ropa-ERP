@@ -105,8 +105,8 @@ const Stores: React.FC = () => {
   };
 
   return (
-    <div className="p-6">
-      <div className="flex justify-between items-center mb-6">
+    <div className="py-6 px-6">
+      <div className="flex justify-between items-center mb-6 mt-6">
         <h1 className="text-2xl font-bold text-gray-800">Tiendas</h1>
         <Button onClick={() => setIsModalOpen(true)}>
           Crear Nueva Tienda

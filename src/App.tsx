@@ -63,7 +63,7 @@ function App() {
           user={user} 
           onLogout={signOut}
         />
-        <main className="flex-1 overflow-y-auto pt-16 p-4 lg:p-6">
+        <main className="flex-1 overflow-y-auto pt-20 p-4 lg:p-6">
           <Routes>
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
             <Route path="/auth" element={<Navigate to="/dashboard" replace />} />
