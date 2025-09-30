@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
 import { useAuth } from './useAuth';
 import {
-  
   Pregunta,
   Auditoria,
   AuditoriaPregunta,
@@ -12,8 +11,7 @@ import {
   ResumenAuditoria,
   ResumenCategoria,
   NuevaPregunta,
-  EditarPregunta,
-  
+  EditarPregunta
 } from '../types/audit';
 
 export const useAudit = () => {
@@ -47,92 +45,17 @@ export const useAudit = () => {
   const [subcategoriaSeleccionada, setSubcategoriaSeleccionada] = useState<number | null>(null);
 
   // Cargar estructura completa del catálogo maestro (SOLO para nuevas auditorías)
-  // Nueva función para cargar preguntas modulares (base + variables - eliminadas)
-  const cargarPreguntasModulares = async (idAuditoria?: number): Promise<any[]> => {
-    try {
-      // 1. Cargar preguntas base
-      const { data: preguntasBase, error: errorBase } = await supabase
-        .from('preguntas')
-        .select('*')
-        .eq('activo', true)
-        .order('orden', { ascending: true });
 
-      if (errorBase) throw errorBase;
-
-      let preguntasVariables: any[] = [];
-      let preguntasEliminadas: any[] = [];
-
-      // 2. Si hay auditoría específica, cargar preguntas variables y eliminadas
-      if (idAuditoria) {
-        // Cargar preguntas variables para esta auditoría
-        const { data: variablesData, error: errorVariables } = await supabase
-          .from('preguntas_variables')
-          .select('*')
-          .eq('id_auditoria', idAuditoria)
-          .eq('activo', true)
-          .order('orden', { ascending: true });
-
-        if (errorVariables) throw errorVariables;
-        preguntasVariables = variablesData || [];
-
-        // Cargar preguntas eliminadas para esta auditoría
-        const { data: eliminadasData, error: errorEliminadas } = await supabase
-          .from('preguntas_eliminadas')
-          .select('id_pregunta')
-          .eq('id_auditoria', idAuditoria);
-
-        if (errorEliminadas) throw errorEliminadas;
-        preguntasEliminadas = eliminadasData || [];
-      }
-
-      // 3. Consolidar preguntas: base + variables - eliminadas
-      const idsEliminadas = new Set(preguntasEliminadas.map(pe => pe.id_pregunta));
-      
-      // Filtrar preguntas base eliminadas
-      const preguntasBaseFiltradas = (preguntasBase || [])
-        .filter(pregunta => !idsEliminadas.has(pregunta.id))
-        .map(pregunta => ({
-          ...pregunta,
-          tipo: 'base' as const,
-          id_original: pregunta.id
-        }));
-
-      // Agregar preguntas variables
-      const preguntasVariablesFormateadas = preguntasVariables.map(pregunta => ({
-        id: pregunta.id_pregunta_variable,
-        subcategoria_id: pregunta.id_subcategoria,
-        texto_pregunta: pregunta.texto_pregunta,
-        orden: pregunta.orden,
-        activo: pregunta.activo,
-        created_at: pregunta.created_at,
-        updated_at: pregunta.updated_at,
-        tipo: 'variable' as const,
-        id_original: pregunta.id_pregunta_variable
-      }));
-
-      const preguntasConsolidadas = [...preguntasBaseFiltradas, ...preguntasVariablesFormateadas];
-
-      console.log('📋 Preguntas modulares cargadas:', {
-        base: preguntasBaseFiltradas.length,
-        variables: preguntasVariablesFormateadas.length,
-        eliminadas: preguntasEliminadas.length,
-        total: preguntasConsolidadas.length
-      });
-
-      return preguntasConsolidadas;
-
-    } catch (error) {
-      console.error('❌ Error cargando preguntas modulares:', error);
-      throw error;
-    }
-  };
 
   const cargarEstructuraCatalogo = async () => {
     try {
       setIsLoading(true);
       setError(null);
-
-      console.log('📋 Cargando estructura del catálogo maestro...');
+      
+      // Limpiar estados previos
+      setCategorias([]);
+      setRespuestas(new Map());
+      setPreguntasAuditoria([]);
 
       // Cargar categorías
       const { data: categoriasData, error: categoriasError } = await supabase
@@ -152,42 +75,48 @@ export const useAudit = () => {
 
       if (subcategoriasError) throw subcategoriasError;
 
-      // Cargar preguntas modulares (sin auditoría específica = solo base)
-      const preguntasConsolidadas = await cargarPreguntasModulares();
+      // Cargar SOLO preguntas base del catálogo maestro (sin variables ni eliminadas)
+      const { data: preguntasBase, error: preguntasError } = await supabase
+        .from('preguntas')
+        .select('*')
+        .eq('activo', true)
+        .order('orden', { ascending: true });
 
-      // Organizar datos en estructura jerárquica
+      if (preguntasError) throw preguntasError;
+
+      // Organizar datos en estructura jerárquica (SOLO preguntas base)
       const categoriasOrganizadas: CategoriaConSubcategorias[] = categoriasData?.map(categoria => ({
         ...categoria,
         subcategorias: subcategoriasData
           ?.filter(sub => sub.categoria_id === categoria.id)
-          .map(subcategoria => ({
-            ...subcategoria,
-            preguntas: preguntasConsolidadas
+          .map(subcategoria => {
+            const preguntasSubcategoria = preguntasBase
               ?.filter(pregunta => pregunta.subcategoria_id === subcategoria.id)
               .map(pregunta => ({
-                // Convertir pregunta consolidada a formato de auditoria_pregunta temporal
+                // Convertir pregunta base a formato de auditoria_pregunta temporal
                 id_auditoria_pregunta: 0, // Se asignará al crear la auditoría
                 id_auditoria: 0,
-                id_pregunta: pregunta.tipo === 'base' ? pregunta.id : 0,
-                id_pregunta_variable: pregunta.tipo === 'variable' ? pregunta.id : undefined,
+                id_pregunta: pregunta.id,
                 texto_pregunta: pregunta.texto_pregunta,
                 id_categoria: categoria.id,
                 id_subcategoria: subcategoria.id,
                 orden: pregunta.orden,
                 created_at: pregunta.created_at,
-                tipo_pregunta: pregunta.tipo,
                 respuesta: undefined
-              })) || []
-          })) || []
+              })) || [];
+            
+
+            
+            return {
+              ...subcategoria,
+              preguntas: preguntasSubcategoria
+            };
+          }) || []
       })) || [];
 
       setCategorias(categoriasOrganizadas);
       
-      console.log('✅ Estructura del catálogo cargada:', {
-        categorias: categoriasOrganizadas.length,
-        subcategorias: subcategoriasData?.length || 0,
-        preguntas: preguntasConsolidadas?.length || 0
-      });
+      console.log('✅ Catálogo cargado:', preguntasBase?.length, 'preguntas');
 
     } catch (error) {
       console.error('❌ Error cargando estructura del catálogo:', error);
@@ -202,8 +131,6 @@ export const useAudit = () => {
     try {
       setIsLoading(true);
       setError(null);
-
-      console.log('📋 Cargando estructura de auditoría existente...');
 
       // Cargar categorías y subcategorías
       const { data: categoriasData } = await supabase
@@ -264,11 +191,7 @@ export const useAudit = () => {
       setCategorias(categoriasOrganizadas);
       setRespuestas(respuestasMap);
       
-      console.log('✅ Estructura de auditoría existente cargada:', {
-        categorias: categoriasOrganizadas.length,
-        subcategorias: subcategoriasData?.length || 0,
-        preguntas: preguntasAuditoriaData?.length || 0
-      });
+      console.log('✅ Auditoría cargada:', preguntasAuditoriaData?.length, 'preguntas');
 
     } catch (error) {
       console.error('❌ Error cargando estructura de auditoría existente:', error);
@@ -289,8 +212,6 @@ export const useAudit = () => {
       setIsSaving(true);
       setError(null);
 
-      console.log('🚀 Creando nueva auditoría...');
-
       // 1. Crear el registro principal de auditoría
       const { data: auditoriaData, error: auditoriaError } = await supabase
         .from('auditorias')
@@ -308,47 +229,51 @@ export const useAudit = () => {
 
       if (auditoriaError) throw auditoriaError;
 
-      console.log('✅ Auditoría creada con ID:', auditoriaData.id_auditoria);
+      // 2. Cargar preguntas y subcategorías por separado (más simple y confiable)
+      const { data: preguntasBase, error: preguntasError } = await supabase
+        .from('preguntas')
+        .select('*')
+        .eq('activo', true)
+        .order('orden', { ascending: true });
 
-      // 2. Crear snapshot de todas las preguntas del catálogo
-      const preguntasSnapshot: Omit<AuditoriaPregunta, 'id_auditoria_pregunta' | 'created_at'>[] = [];
-      
-      categorias.forEach(categoria => {
-        categoria.subcategorias.forEach(subcategoria => {
-          subcategoria.preguntas.forEach(pregunta => {
-            preguntasSnapshot.push({
-              id_auditoria: auditoriaData.id_auditoria,
-              id_pregunta: pregunta.id_pregunta,
-              texto_pregunta: pregunta.texto_pregunta,
-              id_categoria: categoria.id,
-              id_subcategoria: subcategoria.id,
-              orden: pregunta.orden
-            });
-          });
-        });
-      });
+      if (preguntasError) throw preguntasError;
 
-      const { data: preguntasAuditoriaData, error: preguntasError } = await supabase
+      const { data: subcategorias, error: subcategoriasError } = await supabase
+        .from('subcategorias')
+        .select('id, categoria_id');
+
+      if (subcategoriasError) throw subcategoriasError;
+
+      // 3. Crear mapa de subcategorias para lookup rápido
+      const subcategoriaMap = new Map(subcategorias?.map(sub => [sub.id, sub.categoria_id]) || []);
+
+      // 4. Crear snapshot para auditoria_preguntas
+      const preguntasSnapshot = preguntasBase?.map(pregunta => ({
+        id_auditoria: auditoriaData.id_auditoria,
+        id_pregunta: pregunta.id,
+        texto_pregunta: pregunta.texto_pregunta,
+        id_categoria: subcategoriaMap.get(pregunta.subcategoria_id),
+        id_subcategoria: pregunta.subcategoria_id,
+        orden: pregunta.orden
+      })) || [];
+
+      const { data: preguntasAuditoriaData, error: insertError } = await supabase
         .from('auditoria_preguntas')
         .insert(preguntasSnapshot)
         .select();
 
-      if (preguntasError) throw preguntasError;
+      if (insertError) throw insertError;
 
-      console.log('✅ Snapshot de preguntas creado:', preguntasAuditoriaData.length, 'preguntas');
+      console.log('✅ Auditoría creada:', auditoriaData.id_auditoria, '-', preguntasAuditoriaData.length, 'preguntas');
 
-      // 3. Actualizar estados locales
-      setModoRevision(false); // Modo creación nueva
+      // 4. Actualizar estados y cargar estructura final
+      setModoRevision(false);
       setAuditoriaActual(auditoriaData);
-      setPreguntasAuditoria(preguntasAuditoriaData);
       
-      // 4. Actualizar categorías con IDs reales de auditoria_preguntas
-      actualizarCategoriasConPreguntasAuditoria(preguntasAuditoriaData);
+      // Cargar estructura completa para UI
+      await cargarEstructuraAuditoriaExistente(auditoriaData.id_auditoria);
 
       setCurrentStep(2);
-      setShowSuccessMessage(true);
-      setTimeout(() => setShowSuccessMessage(false), 3000);
-
       return auditoriaData;
 
     } catch (error) {
@@ -360,29 +285,7 @@ export const useAudit = () => {
     }
   };
 
-  // Actualizar categorías con los IDs reales de auditoria_preguntas
-  const actualizarCategoriasConPreguntasAuditoria = (preguntasAuditoriaData: AuditoriaPregunta[]) => {
-    setCategorias(prev => 
-      prev.map(categoria => ({
-        ...categoria,
-        subcategorias: categoria.subcategorias.map(subcategoria => ({
-          ...subcategoria,
-          preguntas: subcategoria.preguntas.map(pregunta => {
-            const preguntaAuditoria = preguntasAuditoriaData.find(pa => 
-              pa.id_categoria === categoria.id && 
-              pa.id_subcategoria === subcategoria.id && 
-              pa.id_pregunta === pregunta.id_pregunta
-            );
-            
-            return preguntaAuditoria ? {
-              ...preguntaAuditoria,
-              respuesta: respuestas.get(preguntaAuditoria.id_auditoria_pregunta)
-            } : pregunta;
-          })
-        }))
-      }))
-    );
-  };
+
 
   // Guardar respuesta individual
   const guardarRespuesta = async (
@@ -428,7 +331,6 @@ export const useAudit = () => {
         }))
       );
 
-      console.log('💾 Respuesta guardada:', { id_auditoria_pregunta, respuesta, comentario });
       return true;
 
     } catch (error) {
@@ -525,7 +427,7 @@ export const useAudit = () => {
 
       if (error) throw error;
 
-      console.log('✅ Auditoría finalizada con calificación:', resumen.calificacion_total_ponderada);
+      console.log('✅ Auditoría finalizada:', resumen.calificacion_total_ponderada + '%');
       
       setShowSuccessMessage(true);
       setTimeout(() => setShowSuccessMessage(false), 3000);
@@ -546,8 +448,6 @@ export const useAudit = () => {
     try {
       setIsLoading(true);
       setError(null);
-
-      console.log('📖 Cargando auditoría existente ID:', id_auditoria);
 
       // 1. Cargar auditoría principal
       const { data: auditoriaData, error: auditoriaError } = await supabase
@@ -573,10 +473,7 @@ export const useAudit = () => {
       setModoRevision(true); // Activar modo revisión
       setAuditoriaActual(auditoriaData);
 
-      console.log('✅ Auditoría existente cargada correctamente:', {
-        id: id_auditoria,
-        fecha: auditoriaData.fecha
-      });
+      console.log('✅ Auditoría cargada:', id_auditoria);
 
       return true;
 
@@ -597,8 +494,6 @@ export const useAudit = () => {
         return false;
       }
 
-      console.log('🔄 Recargando auditoría actual ID:', id_auditoria);
-
       // 1. Cargar auditoría principal (actualizar datos)
       const { data: auditoriaData, error: auditoriaError } = await supabase
         .from('auditorias')
@@ -614,7 +509,6 @@ export const useAudit = () => {
       // 3. Actualizar la auditoría actual SIN cambiar modo revisión
       setAuditoriaActual(auditoriaData);
 
-      console.log('✅ Auditoría actual recargada correctamente');
       return true;
 
     } catch (error) {
@@ -634,7 +528,7 @@ export const useAudit = () => {
 
       if (error) throw error;
 
-      console.log('✅ Pregunta agregada al catálogo:', data);
+      console.log('✅ Pregunta agregada');
       await cargarEstructuraCatalogo(); // Recargar estructura
       
       return data;
@@ -659,7 +553,7 @@ export const useAudit = () => {
 
       if (error) throw error;
 
-      console.log('✅ Pregunta editada en el catálogo:', preguntaEditada.id);
+      console.log('✅ Pregunta editada');
       await cargarEstructuraCatalogo(); // Recargar estructura
       
       return true;
@@ -680,7 +574,7 @@ export const useAudit = () => {
 
       if (error) throw error;
 
-      console.log('✅ Pregunta desactivada del catálogo:', preguntaId);
+      console.log('✅ Pregunta desactivada');
       await cargarEstructuraCatalogo(); // Recargar estructura
       
       return true;
@@ -747,76 +641,89 @@ export const useAudit = () => {
   };
 
   // Cargar auditoría anterior específica con sus respuestas
-  const cargarAuditoriaAnterior = async (idAuditoria: number): Promise<boolean> => {
+  const cargarAuditoriaAnterior = async (idAuditoriaPlantilla: number): Promise<boolean> => {
     try {
       setIsLoading(true);
       setError(null);
 
-      console.log('🔄 Cargando auditoría anterior ID:', idAuditoria);
-
-      // 1. Cargar la auditoría
-      const { data: auditoriaData, error: auditoriaError } = await supabase
+      // 1. Cargar datos básicos de la auditoría plantilla
+      const { data: auditoriaPlantilla, error: auditoriaError } = await supabase
         .from('auditorias')
         .select('*')
-        .eq('id_auditoria', idAuditoria)
+        .eq('id_auditoria', idAuditoriaPlantilla)
         .single();
 
       if (auditoriaError) throw auditoriaError;
 
-      // 2. Cargar las preguntas de esa auditoría con sus respuestas
-      const { data: preguntasAuditoriaData, error: preguntasError } = await supabase
+      // 2. Cargar TODAS las preguntas que tenía la auditoría plantilla (sin respuestas)
+      const { data: preguntasPlantilla, error: preguntasError } = await supabase
         .from('auditoria_preguntas')
-        .select(`
-          *,
-          respuesta:respuestas(*)
-        `)
-        .eq('id_auditoria', idAuditoria);
+        .select('*') // Sin respuestas
+        .eq('id_auditoria', idAuditoriaPlantilla)
+        .order('orden', { ascending: true });
 
       if (preguntasError) throw preguntasError;
 
-      // 3. Cargar estructura actual del catálogo
-      await cargarEstructuraCatalogo();
-
-      // 4. Actualizar formulario con datos de la auditoría anterior (excepto fecha)
+      // 3. Actualizar formulario con datos de la plantilla (excepto fecha)
       setFormularioAuditoria({
-        id_tienda: auditoriaData.id_tienda.toString(),
-        fecha: new Date().toISOString().split('T')[0], // Fecha actual para nueva auditoría
-        quienes_reciben: auditoriaData.quienes_reciben || '',
-        observaciones: auditoriaData.observaciones || ''
+        id_tienda: auditoriaPlantilla.id_tienda.toString(),
+        fecha: new Date().toISOString().split('T')[0], // Fecha actual
+        quienes_reciben: auditoriaPlantilla.quienes_reciben || '',
+        observaciones: auditoriaPlantilla.observaciones || ''
       });
 
-      // 5. Crear nueva auditoría
-      setModoRevision(false); // Esto será una nueva auditoría
-      const auditoriaCreada = await crearNuevaAuditoria();
-      if (!auditoriaCreada) return false;
+      // 4. Crear registro principal de nueva auditoría
+      const { data: nuevaAuditoria, error: errorNuevaAuditoria } = await supabase
+        .from('auditorias')
+        .insert({
+          id_tienda: parseInt(formularioAuditoria.id_tienda),
+          id_auditor: user?.id,
+          fecha: formularioAuditoria.fecha,
+          quienes_reciben: formularioAuditoria.quienes_reciben,
+          observaciones: formularioAuditoria.observaciones,
+          estado: 'en_progreso',
+          calificacion_total: 0
+        })
+        .select()
+        .single();
 
-      // 6. Aplicar respuestas anteriores a las preguntas que coincidan
-      for (const preguntaAnterior of preguntasAuditoriaData) {
-        if (preguntaAnterior.respuesta && preguntaAnterior.respuesta.length > 0) {
-          const respuestaAnterior = preguntaAnterior.respuesta[0];
-          
-          // Buscar pregunta equivalente en la nueva auditoría por texto
-          const preguntaActual = preguntasAuditoria.find(p => 
-            p.texto_pregunta === preguntaAnterior.texto_pregunta
-          );
+      if (errorNuevaAuditoria) throw errorNuevaAuditoria;
 
-          if (preguntaActual) {
-            await guardarRespuesta(
-              preguntaActual.id_auditoria_pregunta,
-              respuestaAnterior.respuesta,
-              respuestaAnterior.comentario,
-              respuestaAnterior.accion_correctiva
-            );
-          }
-        }
-      }
+      // 5. Copiar EXACTAMENTE las mismas preguntas de la plantilla (sin respuestas)
+      const preguntasParaNuevaAuditoria = preguntasPlantilla?.map(pregunta => ({
+        id_auditoria: nuevaAuditoria.id_auditoria,
+        id_pregunta: pregunta.id_pregunta, // Mantener referencia si es pregunta base
+        texto_pregunta: pregunta.texto_pregunta,
+        id_categoria: pregunta.id_categoria,
+        id_subcategoria: pregunta.id_subcategoria,
+        orden: pregunta.orden
+      })) || [];
 
-      console.log('✅ Auditoría anterior cargada y aplicada exitosamente');
+      const { data: preguntasCreadas, error: errorPreguntas } = await supabase
+        .from('auditoria_preguntas')
+        .insert(preguntasParaNuevaAuditoria)
+        .select();
+
+      if (errorPreguntas) throw errorPreguntas;
+
+      console.log(`� ${preguntasCreadas.length} preguntas copiadas sin respuestas`);
+
+      // 6. Actualizar estados locales
+      setModoRevision(false);
+      setAuditoriaActual(nuevaAuditoria);
+      setPreguntasAuditoria(preguntasCreadas);
+
+      // 7. Cargar estructura final para mostrar en UI
+      await cargarEstructuraAuditoriaExistente(nuevaAuditoria.id_auditoria);
+      setModoRevision(false); // Mantener en modo creación
+
+      setCurrentStep(2);
+      console.log('✅ Plantilla aplicada:', nuevaAuditoria.id_auditoria, '-', preguntasCreadas.length, 'preguntas');
       return true;
 
     } catch (error) {
-      console.error('❌ Error cargando auditoría anterior:', error);
-      setError('Error al cargar la auditoría anterior');
+      console.error('❌ Error aplicando plantilla:', error);
+      setError('Error al aplicar la plantilla de auditoría');
       return false;
     } finally {
       setIsLoading(false);
@@ -828,8 +735,13 @@ export const useAudit = () => {
   // Agregar pregunta variable específica para una auditoría
   const agregarPreguntaVariable = async (idAuditoria: number, subcategoriaId: number, textoPregunta: string): Promise<boolean> => {
     try {
+      // Verificar que la auditoría existe, pero ser más flexible con el estado
       if (!auditoriaActual || auditoriaActual.id_auditoria !== idAuditoria) {
-        throw new Error('No hay auditoría activa o no coincide con la ID proporcionada');
+        console.warn(`⚠️ Estado de auditoría no sincronizado. Esperado: ${idAuditoria}, Actual: ${auditoriaActual?.id_auditoria}`);
+        // Intentar continuar si al menos tenemos una ID válida
+        if (!idAuditoria) {
+          throw new Error('ID de auditoría no válida');
+        }
       }
 
       // Obtener el siguiente orden para esta subcategoría en esta auditoría
@@ -881,12 +793,7 @@ export const useAudit = () => {
 
       if (errorAuditoriaPregunta) throw errorAuditoriaPregunta;
 
-      console.log('✅ Pregunta variable agregada:', {
-        auditoriaId: idAuditoria,
-        subcategoriaId,
-        texto: textoPregunta.trim(),
-        orden: siguienteOrden
-      });
+      console.log('✅ Pregunta agregada');
 
       // Recargar auditoría actual sin cambiar modo revisión
       await recargarAuditoriaActual(idAuditoria);
@@ -906,24 +813,29 @@ export const useAudit = () => {
         throw new Error('No hay auditoría activa o no coincide con la ID proporcionada');
       }
 
+      // Verificar si la pregunta ya está eliminada para evitar error 409
+      const { data: yaEliminada } = await supabase
+        .from('preguntas_eliminadas')
+        .select('id_pregunta')
+        .eq('id_auditoria', idAuditoria)
+        .eq('id_pregunta', idPregunta)
+        .single();
+
+      if (yaEliminada) {
+        return true;
+      }
+
       // Marcar pregunta como eliminada para esta auditoría
       const { error: errorEliminada } = await supabase
         .from('preguntas_eliminadas')
         .insert({
           id_auditoria: idAuditoria,
           id_pregunta: idPregunta,
-          eliminado_por: null, // Podrías obtener el usuario actual aquí
+          eliminado_por: user?.id || null,
           motivo: motivo || 'Eliminada durante edición de auditoría'
         });
 
-      if (errorEliminada) {
-        // Si falla, podría ser porque ya está eliminada
-        if (errorEliminada.code === '23505') { // Unique constraint violation
-          console.log('⚠️ Pregunta ya estaba eliminada de esta auditoría');
-          return true;
-        }
-        throw errorEliminada;
-      }
+      if (errorEliminada) throw errorEliminada;
 
       // Eliminar de auditoria_preguntas
       const { error: errorAuditoriaPregunta } = await supabase
@@ -934,11 +846,7 @@ export const useAudit = () => {
 
       if (errorAuditoriaPregunta) throw errorAuditoriaPregunta;
 
-      console.log('✅ Pregunta eliminada de auditoría:', {
-        auditoriaId: idAuditoria,
-        preguntaId: idPregunta,
-        motivo
-      });
+      console.log('✅ Pregunta eliminada');
 
       // Recargar auditoría actual sin cambiar modo revisión
       await recargarAuditoriaActual(idAuditoria);
@@ -997,7 +905,6 @@ export const useAudit = () => {
     agregarPreguntaVariable,
     eliminarPreguntaDeAuditoria,
     recargarAuditoriaActual,
-    cargarPreguntasModulares,
     
     // Handlers
     handleFormularioChange,

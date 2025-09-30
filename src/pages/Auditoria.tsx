@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Modal } from '../components/ui/Modal';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
@@ -8,6 +9,8 @@ import { supabase } from '../supabaseClient';
 import type { Auditoria, Respuesta } from '../types/audit';
 
 const Auditoria = () => {
+  const navigate = useNavigate();
+  
   const {
     // Estados principales
     categorias,
@@ -261,17 +264,22 @@ const Auditoria = () => {
     try {
       if (!auditoriaActual) return;
 
-      // Primero obtener información de la pregunta para determinar si es base o variable
+      console.log(`🗑️ Intentando eliminar pregunta con ID: ${idAuditoriaPregunta}`);
+
+      // Primero obtener información completa de la pregunta para determinar si es base o variable
       const { data: preguntaInfo, error: errorInfo } = await supabase
         .from('auditoria_preguntas')
-        .select('id_pregunta')
+        .select('id_pregunta, texto_pregunta, id_subcategoria')
         .eq('id_auditoria_pregunta', idAuditoriaPregunta)
         .single();
 
       if (errorInfo) throw errorInfo;
 
+      console.log('📋 Información de pregunta:', preguntaInfo);
+
       // Si tiene id_pregunta, es una pregunta base -> usar sistema modular
       if (preguntaInfo.id_pregunta) {
+        console.log('🔧 Eliminando pregunta base usando sistema modular');
         const exito = await eliminarPreguntaDeAuditoria(
           auditoriaActual.id_auditoria, 
           preguntaInfo.id_pregunta,
@@ -282,39 +290,71 @@ const Auditoria = () => {
           throw new Error('Error en eliminarPreguntaDeAuditoria');
         }
       } else {
-        // Si no tiene id_pregunta, es una pregunta variable -> eliminar directamente
-        const { error } = await supabase
+        // Si no tiene id_pregunta, es una pregunta variable -> eliminar completamente
+        console.log('🔧 Eliminando pregunta variable de la base de datos');
+        
+        // Paso 1: Eliminar respuesta asociada si existe
+        const { error: errorRespuesta } = await supabase
+          .from('respuestas')
+          .delete()
+          .eq('id_auditoria_pregunta', idAuditoriaPregunta);
+
+        if (errorRespuesta) {
+          console.warn('⚠️ Error eliminando respuesta (puede no existir):', errorRespuesta);
+        }
+
+        // Paso 2: Buscar si existe en preguntas_variables por texto y subcategoría
+        const { data: preguntaVariable, error: errorBusqueda } = await supabase
+          .from('preguntas_variables')
+          .select('id_pregunta_variable')
+          .eq('id_auditoria', auditoriaActual.id_auditoria)
+          .eq('id_subcategoria', preguntaInfo.id_subcategoria)
+          .eq('texto_pregunta', preguntaInfo.texto_pregunta)
+          .maybeSingle();
+
+        if (errorBusqueda) {
+          console.warn('⚠️ Error buscando pregunta variable:', errorBusqueda);
+        }
+
+        // Paso 3: Eliminar de preguntas_variables si existe
+        if (preguntaVariable) {
+          console.log(`🗑️ Eliminando pregunta variable con ID: ${preguntaVariable.id_pregunta_variable}`);
+          const { error: errorEliminarVariable } = await supabase
+            .from('preguntas_variables')
+            .delete()
+            .eq('id_pregunta_variable', preguntaVariable.id_pregunta_variable);
+
+          if (errorEliminarVariable) {
+            console.error('❌ Error eliminando de preguntas_variables:', errorEliminarVariable);
+            throw errorEliminarVariable;
+          }
+        } else {
+          console.log('ℹ️ No se encontró pregunta variable correspondiente');
+        }
+
+        // Paso 4: Eliminar de auditoria_preguntas
+        const { error: errorAuditoriaPregunta } = await supabase
           .from('auditoria_preguntas')
           .delete()
           .eq('id_auditoria_pregunta', idAuditoriaPregunta)
           .eq('id_auditoria', auditoriaActual.id_auditoria);
 
-        if (error) throw error;
+        if (errorAuditoriaPregunta) {
+          console.error('❌ Error eliminando de auditoria_preguntas:', errorAuditoriaPregunta);
+          throw errorAuditoriaPregunta;
+        }
 
-        // También eliminar respuesta asociada si existe
-        await supabase
-          .from('respuestas')
-          .delete()
-          .eq('id_auditoria_pregunta', idAuditoriaPregunta);
-
-        // Eliminar de preguntas_variables si existe
-        await supabase
-          .from('preguntas_variables')
-          .delete()
-          .eq('id_auditoria', auditoriaActual.id_auditoria);
-
-        // Recargar la auditoría pero MANTENER el modo normal (no activar modo revisión)
+        // Paso 5: Recargar la auditoría manteniendo el modo actual
         if (auditoriaActual?.id_auditoria) {
-          // Usar la nueva función para recargar sin activar modo revisión
           await recargarAuditoriaActual(auditoriaActual.id_auditoria);
         }
       }
       
-      console.log('✅ Pregunta eliminada de la auditoría');
+      console.log('✅ Pregunta eliminada exitosamente de la auditoría');
       
     } catch (error) {
       console.error('❌ Error eliminando pregunta:', error);
-      setError('Error al eliminar la pregunta de la auditoría');
+      setError('Error al eliminar la pregunta de la auditoría: ' + (error as Error).message);
     }
   };
 
@@ -419,6 +459,22 @@ const Auditoria = () => {
       setError('Error al actualizar la auditoría');
     } finally {
       setActualizandoAuditoria(false);
+    }
+  };
+
+  // Función wrapper para finalizar auditoría con redirección
+  const manejarFinalizarAuditoria = async () => {
+    try {
+      const exito = await finalizarAuditoria();
+      if (exito) {
+        console.log('🎉 Auditoría finalizada exitosamente, redirigiendo a estadísticas...');
+        // Pequeño delay para mostrar el mensaje de éxito antes de redireccionar
+        setTimeout(() => {
+          navigate('/statistics');
+        }, 2000);
+      }
+    } catch (error) {
+      console.error('❌ Error finalizando auditoría:', error);
     }
   };
 
@@ -681,7 +737,7 @@ const Auditoria = () => {
             </>
           ) : (
             <Button 
-              onClick={() => finalizarAuditoria()}
+              onClick={manejarFinalizarAuditoria}
               variant="primary"
               disabled={isSaving}
             >
@@ -691,7 +747,16 @@ const Auditoria = () => {
         </div>
       </div>
 
-      {categorias.map((categoria) => (
+      {categorias.map((categoria) => {
+        console.log(`🔍 Renderizando categoría: ${categoria.nombre}`);
+        categoria.subcategorias.forEach(sub => {
+          console.log(`  📂 Subcategoría: ${sub.nombre} - ${sub.preguntas.length} preguntas`);
+          sub.preguntas.forEach((pregunta, idx) => {
+            console.log(`    📝 [${idx}] ID: ${pregunta.id_auditoria_pregunta}, Pregunta: "${pregunta.texto_pregunta.slice(0, 30)}...", id_pregunta: ${pregunta.id_pregunta}`);
+          });
+        });
+        
+        return (
         <Card key={categoria.id} className="overflow-hidden">
           <div className="bg-gradient-to-r from-blue-500 to-blue-600 text-white p-4">
             <div className="flex justify-between items-center">
@@ -709,7 +774,7 @@ const Auditoria = () => {
                   <h4 className="text-lg font-semibold text-gray-700">
                     {subcategoria.nombre}
                   </h4>
-                  {(!modoRevision || auditoriaActual) && (
+                  {!modoRevision && auditoriaActual && (
                     <div className="flex gap-2">
                       <Button
                         onClick={() => toggleModoEdicionPreguntas(subcategoria.id)}
@@ -733,7 +798,11 @@ const Auditoria = () => {
 
                 <div className="space-y-2">
                   {subcategoria.preguntas.map((pregunta, preguntaIdx) => (
-                    <div key={pregunta.id_auditoria_pregunta > 0 ? pregunta.id_auditoria_pregunta : `pregunta-${subcategoria.id}-${pregunta.id_pregunta || preguntaIdx}`}>
+                    <div key={
+                      pregunta.id_auditoria_pregunta > 0 
+                        ? `auditoria-${pregunta.id_auditoria_pregunta}` 
+                        : `temp-${subcategoria.id}-${pregunta.id_pregunta || 'var'}-${preguntaIdx}-${pregunta.texto_pregunta.slice(0, 10)}`
+                    }>
                       <div className="flex items-center justify-between py-2 px-3 bg-white rounded border hover:bg-gray-50">
                         <p className="text-gray-800 text-sm flex-1 mr-4">
                           {pregunta.texto_pregunta}
@@ -941,7 +1010,8 @@ const Auditoria = () => {
             ))}
           </div> {/* Cierre del div className="p-6 space-y-6" */}
         </Card>
-      ))}
+        );
+      })}
 
       {/* Sección de Notas y Conclusiones */}
       <Card className="mt-8">
@@ -1127,7 +1197,7 @@ const Auditoria = () => {
             <Button 
               onClick={() => {
                 setShowResumenModal(false);
-                finalizarAuditoria();
+                manejarFinalizarAuditoria();
               }}
               variant="primary"
               disabled={isSaving}
