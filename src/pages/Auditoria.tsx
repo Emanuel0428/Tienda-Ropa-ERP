@@ -3,11 +3,11 @@ import { Modal } from '../components/ui/Modal';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
-import { useAudit2 } from '../hooks/useAudit2';
+import { useAudit } from '../hooks/useAudit';
 import { supabase } from '../supabaseClient';
-import type { Auditoria, Respuesta } from '../types/audit2';
+import type { Auditoria, Respuesta } from '../types/audit';
 
-const Auditoria2 = () => {
+const Auditoria = () => {
   const {
     // Estados principales
     categorias,
@@ -45,8 +45,13 @@ const Auditoria2 = () => {
     setError,
     setModoRevision,
     cargarEstructuraCatalogo,
-    setAuditoriaActual
-  } = useAudit2();
+    setAuditoriaActual,
+    
+    // Funciones modulares
+    agregarPreguntaVariable,
+    eliminarPreguntaDeAuditoria,
+    recargarAuditoriaActual
+  } = useAudit();
 
   const [showResumenModal, setShowResumenModal] = useState(false);
   const [auditoriasAnteriores, setAuditoriasAnteriores] = useState<Auditoria[]>([]);
@@ -74,7 +79,7 @@ const Auditoria2 = () => {
   const [mostrarFormularioNuevaPregunta, setMostrarFormularioNuevaPregunta] = useState<{[key: number]: boolean}>({});
   const [textoNuevaPregunta, setTextoNuevaPregunta] = useState<{[key: number]: string}>({});
 
-  // Lista de imágenes del checklist (igual que Auditoría 1.0)
+  // Lista de imágenes del checklist
   const checklistImagenes = [
     'Fachada',
     'Campaña y promociones',
@@ -206,7 +211,7 @@ const Auditoria2 = () => {
     }));
   };
 
-  // Función para agregar nueva pregunta
+  // Función para agregar nueva pregunta (ahora usando sistema modular)
   const agregarNuevaPregunta = async (subcategoriaId: number) => {
     try {
       const textoTrimmed = (textoNuevaPregunta[subcategoriaId] || '').trim();
@@ -220,69 +225,15 @@ const Auditoria2 = () => {
         return;
       }
 
-      // 1. Primero agregar la pregunta al catálogo maestro (tabla preguntas)
-      // Obtener el siguiente número de orden para esta subcategoría
-      const { data: ultimaPregunta } = await supabase
-        .from('preguntas')
-        .select('orden')
-        .eq('subcategoria_id', subcategoriaId)
-        .order('orden', { ascending: false })
-        .limit(1);
+      // Usar la nueva función modular para agregar pregunta variable
+      const exito = await agregarPreguntaVariable(
+        auditoriaActual.id_auditoria, 
+        subcategoriaId, 
+        textoTrimmed
+      );
 
-      const siguienteOrden = ultimaPregunta && ultimaPregunta.length > 0 ? ultimaPregunta[0].orden + 1 : 1;
-
-      const { data: nuevaPreguntaMaestro, error: errorPreguntaMaestro } = await supabase
-        .from('preguntas')
-        .insert({
-          subcategoria_id: subcategoriaId,
-          texto_pregunta: textoTrimmed,
-          orden: siguienteOrden,
-          activo: true
-        })
-        .select('*')
-        .single();
-
-      if (errorPreguntaMaestro) {
-        console.error('Error al agregar pregunta al catálogo maestro:', errorPreguntaMaestro);
-        throw errorPreguntaMaestro;
-      }
-
-      // 2. Luego agregar la pregunta a la auditoría actual (tabla auditoria_preguntas)
-      // Buscar la información de la subcategoría para obtener la categoría
-      const { data: subcategoriaInfo } = await supabase
-        .from('subcategorias')
-        .select('categoria_id')
-        .eq('id', subcategoriaId)
-        .single();
-
-      if (!subcategoriaInfo) {
-        throw new Error('No se pudo obtener información de la subcategoría');
-      }
-
-      const { data: nuevaAuditoriaPregunta, error: errorAuditoriaPregunta } = await supabase
-        .from('auditoria_preguntas')
-        .insert({
-          id_auditoria: auditoriaActual.id_auditoria,
-          id_pregunta: nuevaPreguntaMaestro.id,
-          texto_pregunta: textoTrimmed, // snapshot del texto
-          id_categoria: subcategoriaInfo.categoria_id,
-          id_subcategoria: subcategoriaId,
-          orden: siguienteOrden
-        })
-        .select('*')
-        .single();
-
-      if (errorAuditoriaPregunta) {
-        console.error('Error al agregar pregunta a la auditoría:', errorAuditoriaPregunta);
-        throw errorAuditoriaPregunta;
-      }
-
-      console.log('✅ Nueva pregunta creada con ID:', nuevaAuditoriaPregunta.id_auditoria_pregunta);
-
-      // 3. Actualizar el estado local para mostrar la nueva pregunta inmediatamente
-      // Recargar la auditoría actual para obtener la nueva pregunta con su ID correcto
-      if (auditoriaActual) {
-        await cargarAuditoriaExistente(auditoriaActual.id_auditoria);
+      if (!exito) {
+        throw new Error('Error en agregarPreguntaVariable');
       }
 
       // Limpiar el formulario
@@ -305,33 +256,58 @@ const Auditoria2 = () => {
     }
   };
 
-  // Función para ocultar pregunta en auditoría específica
+  // Función para ocultar pregunta en auditoría específica (versión actualizada modular)
   const ocultarPreguntaEnAuditoria = async (idAuditoriaPregunta: number) => {
     try {
       if (!auditoriaActual) return;
 
-      const modoActual = modoRevision; // Guardar el modo actual
-
-      // Eliminar la pregunta solo de esta auditoría (tabla auditoria_preguntas)
-      const { error } = await supabase
+      // Primero obtener información de la pregunta para determinar si es base o variable
+      const { data: preguntaInfo, error: errorInfo } = await supabase
         .from('auditoria_preguntas')
-        .delete()
+        .select('id_pregunta')
         .eq('id_auditoria_pregunta', idAuditoriaPregunta)
-        .eq('id_auditoria', auditoriaActual.id_auditoria);
+        .single();
 
-      if (error) throw error;
+      if (errorInfo) throw errorInfo;
 
-      // También eliminar respuesta asociada si existe
-      await supabase
-        .from('respuestas')
-        .delete()
-        .eq('id_auditoria_pregunta', idAuditoriaPregunta);
+      // Si tiene id_pregunta, es una pregunta base -> usar sistema modular
+      if (preguntaInfo.id_pregunta) {
+        const exito = await eliminarPreguntaDeAuditoria(
+          auditoriaActual.id_auditoria, 
+          preguntaInfo.id_pregunta,
+          'Eliminada desde interfaz de edición'
+        );
+        
+        if (!exito) {
+          throw new Error('Error en eliminarPreguntaDeAuditoria');
+        }
+      } else {
+        // Si no tiene id_pregunta, es una pregunta variable -> eliminar directamente
+        const { error } = await supabase
+          .from('auditoria_preguntas')
+          .delete()
+          .eq('id_auditoria_pregunta', idAuditoriaPregunta)
+          .eq('id_auditoria', auditoriaActual.id_auditoria);
 
-      // Recargar la auditoría existente
-      if (auditoriaActual?.id_auditoria) {
-        await cargarAuditoriaExistente(auditoriaActual.id_auditoria);
-        // Restaurar el modo que tenía antes
-        setModoRevision(modoActual);
+        if (error) throw error;
+
+        // También eliminar respuesta asociada si existe
+        await supabase
+          .from('respuestas')
+          .delete()
+          .eq('id_auditoria_pregunta', idAuditoriaPregunta);
+
+        // Eliminar de preguntas_variables si existe
+        await supabase
+          .from('preguntas_variables')
+          .delete()
+          .eq('id_auditoria', auditoriaActual.id_auditoria);
+
+        // Recargar la auditoría pero MANTENER el modo normal (no activar modo revisión)
+        if (auditoriaActual?.id_auditoria) {
+          // Usar la nueva función para recargar sin activar modo revisión
+          await recargarAuditoriaActual(auditoriaActual.id_auditoria);
+        }
       }
       
       console.log('✅ Pregunta eliminada de la auditoría');
@@ -450,7 +426,7 @@ const Auditoria2 = () => {
   const renderFormularioInicial = () => (
     <Card className="max-w-2xl mx-auto">
       <div className="p-6">
-        <h2 className="text-2xl font-bold text-gray-800 mb-6">Nueva Auditoría 2.0</h2>
+        <h2 className="text-2xl font-bold text-gray-800 mb-6">Nueva Auditoría</h2>
         
         <form onSubmit={async (e) => {
           e.preventDefault();
@@ -746,7 +722,7 @@ const Auditoria2 = () => {
                         <Button
                           onClick={() => toggleFormularioNuevaPregunta(subcategoria.id)}
                           variant="secondary"
-                          className="text-xs px-3 py-1 bg-green-100 hover:bg-green-200 text-green-700"
+                          className="text-xs px-3 py-1 bg-green-400 hover:bg-green-500 text-white font-semibold shadow-md hover:shadow-lg transition-all duration-200 border border-green-500"
                         >
                           ➕ Pregunta Nueva
                         </Button>
@@ -934,13 +910,13 @@ const Auditoria2 = () => {
 
                   {/* Formulario para nueva pregunta */}
                   {mostrarFormularioNuevaPregunta[subcategoria.id] && (
-                    <div className="bg-green-50 border-2 border-green-200 rounded-lg p-4 mt-4">
+                    <div className="bg-green-100 border-2 border-green-400 rounded-lg p-4 mt-4 shadow-lg">
                       <div className="flex items-center gap-4">
                         <button
                           type="button"
                           onClick={() => agregarNuevaPregunta(subcategoria.id)}
                           disabled={!textoNuevaPregunta[subcategoria.id]?.trim()}
-                          className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold bg-green-100 text-green-600 hover:bg-green-500 hover:text-white transition-all duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                          className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold bg-green-500 text-white hover:bg-green-600 shadow-md hover:shadow-lg transition-all duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed border border-green-600"
                           title="Guardar nueva pregunta"
                         >
                           ➕
@@ -955,7 +931,7 @@ const Auditoria2 = () => {
                             }
                           }}
                           placeholder="Escriba aquí la nueva pregunta..."
-                          className="flex-1 px-4 py-2 border border-green-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 bg-white"
+                          className="flex-1 px-4 py-2 border-2 border-green-400 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-600 bg-white shadow-inner"
                         />
                       </div>
                     </div>
@@ -1193,7 +1169,7 @@ const Auditoria2 = () => {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold text-gray-900">
-              {modoRevision ? '📋 Revisión de Auditoría' : '🚀 Auditorías 2.0'}
+              {modoRevision ? '📋 Revisión de Auditoría' : '🚀 Auditorías'}
             </h1>
             {modoRevision && auditoriaActual && (
               <div className="mt-2 flex items-center gap-4 text-sm text-gray-600">
@@ -1378,4 +1354,4 @@ const Auditoria2 = () => {
   );
 }
 
-export default Auditoria2;
+export default Auditoria;

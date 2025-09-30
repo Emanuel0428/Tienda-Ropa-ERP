@@ -55,17 +55,14 @@ const Sidebar: React.FC<SidebarProps> = ({ user }) => {
         { id: 'analytics', label: 'Analíticas', icon: TrendingUp, path: '/analytics' },
         { id: 'statistics', label: 'Estadísticas', icon: BarChart, path: '/statistics' }
       );
-      baseItems.push({ id: 'audit', label: 'Auditoría', icon: Search, path: '/audit' });
-      baseItems.push({ id: 'auditoria2', label: 'Auditoría 2.0', icon: Search, path: '/auditoria2' });
+      baseItems.push({ id: 'auditoria', label: 'Auditoría', icon: Search, path: '/auditoria' });
     } else if (user?.role === 'coordinador') {
       // Coordinador puede ver tiendas y auditoría
       baseItems.splice(2, 0, { id: 'stores', label: 'Tiendas', icon: Store, path: '/stores' });
-      baseItems.push({ id: 'audit', label: 'Auditoría', icon: Search, path: '/audit' });
-      baseItems.push({ id: 'auditoria2', label: 'Auditoría 2.0', icon: Search, path: '/auditoria2' });
+      baseItems.push({ id: 'auditoria', label: 'Auditoría', icon: Search, path: '/auditoria' });
     } else if (user?.role === 'auditor') {
       // Auditor solo puede ver auditoría además de lo básico
-      baseItems.push({ id: 'audit', label: 'Auditoría', icon: Search, path: '/audit' });
-      baseItems.push({ id: 'auditoria2', label: 'Auditoría 2.0', icon: Search, path: '/auditoria2' });
+      baseItems.push({ id: 'auditoria', label: 'Auditoría', icon: Search, path: '/auditoria' });
     }
     // Asesoras solo ven los elementos básicos
 

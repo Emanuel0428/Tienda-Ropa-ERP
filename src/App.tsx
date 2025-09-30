@@ -9,8 +9,7 @@ import Sales from './pages/Sales';
 import SalesSummary from './pages/SalesSummary';
 import Goals from './pages/Goals';
 import Inventory from './pages/Inventory';
-import Audit from './pages/Audit';
-import Auditoria2 from './pages/Auditoria2';
+import Auditoria from './pages/Auditoria';
 import Auth from './pages/Auth';
 import Profile from './pages/Profile';
 import Settings from './pages/Settings';
@@ -77,8 +76,7 @@ function App() {
             <Route path="/stores" element={<Stores />} />
             <Route path="/users" element={<Users />} />
             <Route path="/statistics" element={<Statistics />} />
-            <Route path="/audit" element={<Audit />} />
-            <Route path="/auditoria2" element={<Auditoria2 />} />
+            <Route path="/auditoria" element={<Auditoria />} />
             <Route path="/analytics" element={<Analytics />} />
             <Route path="/incidents" element={<Incidents />} />
             <Route path="/schedule" element={<Schedule />} />

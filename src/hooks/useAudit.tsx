@@ -1,638 +1,1021 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
 import { useAuth } from './useAuth';
-import { 
-  Usuario, 
-  Tienda, 
-  AuditInfo, 
-  ExtraNotes, 
-  UploadedImages, 
-  Categoria
+import {
+  
+  Pregunta,
+  Auditoria,
+  AuditoriaPregunta,
+  Respuesta,
+  CategoriaConSubcategorias,
+  FormularioAuditoria,
+  ResumenAuditoria,
+  ResumenCategoria,
+  NuevaPregunta,
+  EditarPregunta,
+  
 } from '../types/audit';
-import { initialCategories } from '../constants/auditCategories';
-import { getCalificacionTotalTienda, getCategoriaPromedio, getSubcategoriaTotal } from '../utils/auditCalculations';
 
 export const useAudit = () => {
   const { user } = useAuth();
-  
+
   // Estados principales
-  const [categories, setCategories] = useState<Categoria[]>(initialCategories);
-  const [usuarios, setUsuarios] = useState<Usuario[]>([]);
-  const [usuariosTienda, setUsuariosTienda] = useState<Usuario[]>([]);
-  const [tiendas, setTiendas] = useState<Tienda[]>([]);
-  const [error, setError] = useState<string | null>(null);
-  const [isSaving, setIsSaving] = useState(false);
-  const [currentAuditId, setCurrentAuditId] = useState<number | null>(null);
-  const [auditInfoSaved, setAuditInfoSaved] = useState(false);
-  const [showSuccessMessage, setShowSuccessMessage] = useState(false);
-  const [currentStep, setCurrentStep] = useState(1);
-
-  // Estado para los datos de la auditoría
-  const [auditInfo, setAuditInfo] = useState<AuditInfo>({
+  const [categorias, setCategorias] = useState<CategoriaConSubcategorias[]>([]);
+  const [auditoriaActual, setAuditoriaActual] = useState<Auditoria | null>(null);
+  const [preguntasAuditoria, setPreguntasAuditoria] = useState<AuditoriaPregunta[]>([]);
+  const [respuestas, setRespuestas] = useState<Map<number, Respuesta>>(new Map());
+  
+  // Estados de formulario
+  const [formularioAuditoria, setFormularioAuditoria] = useState<FormularioAuditoria>({
     id_tienda: '',
+    fecha: new Date().toISOString().split('T')[0],
     quienes_reciben: '',
-    fecha: new Date().toISOString().split('T')[0]
+    observaciones: ''
   });
 
-  // Estado para las notas adicionales
-  const [extraNotes, setExtraNotes] = useState<ExtraNotes>({
-    personal: '',
-    campanasTienda: '',
-    conclusiones: ''
-  });
+  // Estados de control
+  const [isLoading, setIsLoading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [currentStep, setCurrentStep] = useState(1);
+  const [showSuccessMessage, setShowSuccessMessage] = useState(false);
+  const [modoRevision, setModoRevision] = useState(false); // Nuevo estado para modo revisión
 
-  // Estado para imágenes del checklist final
-  const [uploadedChecklistImages, setUploadedChecklistImages] = useState<UploadedImages>({});
+  // Estados para gestión de preguntas del catálogo
+  const [showPreguntaModal, setShowPreguntaModal] = useState(false);
+  const [preguntaEditando, setPreguntaEditando] = useState<Pregunta | null>(null);
+  const [subcategoriaSeleccionada, setSubcategoriaSeleccionada] = useState<number | null>(null);
 
-  // Estados para manejar auditorías existentes
-  const [existingAudits, setExistingAudits] = useState<any[]>([]);
-  const [showAuditHistoryModal, setShowAuditHistoryModal] = useState(false);
-
-  // Cargar datos iniciales
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        // Cargar usuarios
-        const { data: usuariosData } = await supabase.from('usuarios').select('*');
-        if (usuariosData) setUsuarios(usuariosData);
-
-        // Cargar tiendas
-        const { data: tiendasData } = await supabase.from('tiendas').select('*');
-        if (tiendasData) setTiendas(tiendasData);
-      } catch (error) {
-        console.error('Error cargando datos:', error);
-      }
-    };
-    fetchData();
-  }, []);
-
-  // Filtrar usuarios por tienda seleccionada
-  useEffect(() => {
-    if (auditInfo.id_tienda && usuarios.length > 0) {
-      const usuariosFiltrados = usuarios.filter(usuario => 
-        usuario.id_tienda === parseInt(auditInfo.id_tienda)
-      );
-      setUsuariosTienda(usuariosFiltrados);
-    } else {
-      setUsuariosTienda([]);
-    }
-  }, [auditInfo.id_tienda, usuarios]);
-
-  // Handlers para formularios
-  const handleAuditInfoChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    const { name, value } = e.target;
-    setAuditInfo(prev => ({ ...prev, [name]: value }));
-  };
-
-  const handleExtraNotesChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const { name, value } = e.target;
-    setExtraNotes(prev => ({ ...prev, [name]: value }));
-  };
-
-  const handleChecklistImageChange = (label: string, files: FileList | null) => {
-    if (files && files.length > 0) {
-      const file = files[0];
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        if (e.target?.result) {
-          setUploadedChecklistImages(prev => ({
-            ...prev,
-            [label]: [e.target!.result as string] // Guardar solo la URL como string[]
-          }));
-        }
-      };
-      reader.readAsDataURL(file);
-    } else {
-      setUploadedChecklistImages(prev => {
-        const updated = { ...prev };
-        delete updated[label];
-        return updated;
-      });
-    }
-  };
-
-  // Handlers para calificaciones e items
-  const handleCalificacionChange = (catId: number, subcatId: number, itemId: number, value: 0 | 100) => {
-    setCategories(prevCategories => 
-      prevCategories.map(cat => 
-        cat.id === catId 
-          ? {
-              ...cat,
-              subcategorias: cat.subcategorias.map(subcat => 
-                subcat.id === subcatId 
-                  ? {
-                      ...subcat,
-                      items: subcat.items.map(item => 
-                        item.id === itemId 
-                          ? { ...item, calificacion: value }
-                          : item
-                      )
-                    }
-                  : subcat
-              )
-            }
-          : cat
-      )
-    );
-  };
-
-  const handleNovedadChange = (catId: number, subcatId: number, itemId: number, value: string) => {
-    setCategories(prevCategories => 
-      prevCategories.map(cat => 
-        cat.id === catId 
-          ? {
-              ...cat,
-              subcategorias: cat.subcategorias.map(subcat => 
-                subcat.id === subcatId 
-                  ? {
-                      ...subcat,
-                      items: subcat.items.map(item => 
-                        item.id === itemId 
-                          ? { ...item, novedad: value }
-                          : item
-                      )
-                    }
-                  : subcat
-              )
-            }
-          : cat
-      )
-    );
-  };
-
-  // Función para cargar datos de auditoría existente
-  const loadExistingAuditData = async (auditId: number) => {
-    console.log('📊 Cargando datos de auditoría existente:', auditId);
-    
+  // Cargar estructura completa del catálogo maestro (SOLO para nuevas auditorías)
+  // Nueva función para cargar preguntas modulares (base + variables - eliminadas)
+  const cargarPreguntasModulares = async (idAuditoria?: number): Promise<any[]> => {
     try {
-      // Cargar información general de la auditoría
-      const { data: auditData, error: auditError } = await supabase
-        .from('auditoria')
+      // 1. Cargar preguntas base
+      const { data: preguntasBase, error: errorBase } = await supabase
+        .from('preguntas')
         .select('*')
-        .eq('id_auditoria', auditId)
-        .single();
+        .eq('activo', true)
+        .order('orden', { ascending: true });
 
-      if (auditError) {
-        console.error('Error cargando información de auditoría:', auditError);
-        return;
-      }
+      if (errorBase) throw errorBase;
 
-      if (auditData) {
-        setAuditInfo({
-          id_tienda: auditData.id_tienda?.toString() || '',
-          quienes_reciben: auditData.quienes_reciben || '',
-          fecha: auditData.fecha_auditoria || new Date().toISOString().split('T')[0]
-        });
+      let preguntasVariables: any[] = [];
+      let preguntasEliminadas: any[] = [];
 
-        setExtraNotes({
-          personal: auditData.notas_personal || '',
-          campanasTienda: auditData.notas_campanas || '',
-          conclusiones: auditData.conclusiones || ''
-        });
-      }
-
-      // Cargar categorías existentes
-      const { data: categoriasData } = await supabase
-        .from('auditoria_categorias')
-        .select('*')
-        .eq('id_auditoria', auditId);
-
-      if (categoriasData && categoriasData.length > 0) {
-        // Cargar subcategorías existentes  
-        const { data: subcategoriasData } = await supabase
-          .from('auditoria_subcategorias')
+      // 2. Si hay auditoría específica, cargar preguntas variables y eliminadas
+      if (idAuditoria) {
+        // Cargar preguntas variables para esta auditoría
+        const { data: variablesData, error: errorVariables } = await supabase
+          .from('preguntas_variables')
           .select('*')
-          .in('id_auditoria_categoria', categoriasData.map(c => c.id_auditoria_categoria));
+          .eq('id_auditoria', idAuditoria)
+          .eq('activo', true)
+          .order('orden', { ascending: true });
 
-        if (subcategoriasData && subcategoriasData.length > 0) {
-          // Cargar items existentes
-          const { data: itemsData } = await supabase
-            .from('auditoria_items') 
-            .select('*')
-            .in('id_auditoria_subcategoria', subcategoriasData.map(s => s.id_auditoria_subcategoria));
+        if (errorVariables) throw errorVariables;
+        preguntasVariables = variablesData || [];
 
-          console.log('📋 Datos existentes cargados:', { 
-            categorias: categoriasData.length,
-            subcategorias: subcategoriasData.length, 
-            items: itemsData?.length || 0
-          });
+        // Cargar preguntas eliminadas para esta auditoría
+        const { data: eliminadasData, error: errorEliminadas } = await supabase
+          .from('preguntas_eliminadas')
+          .select('id_pregunta')
+          .eq('id_auditoria', idAuditoria);
 
-          // Reconstruir el estado de categories con los datos existentes
-          if (itemsData && itemsData.length > 0) {
-            setCategories(prevCategories => 
-              prevCategories.map(categoria => {
-                const categoriaData = categoriasData.find(cd => cd.id_categoria_original === categoria.id);
-                
-                return {
-                  ...categoria,
-                  subcategorias: categoria.subcategorias.map(subcategoria => {
-                    const subcategoriaData = subcategoriasData.find(sd => 
-                      sd.id_auditoria_categoria === categoriaData?.id_auditoria_categoria &&
-                      sd.id_subcategoria_original === subcategoria.id
-                    );
-
-                    return {
-                      ...subcategoria,
-                      items: subcategoria.items.map(item => {
-                        const itemData = itemsData.find(id => 
-                          id.id_auditoria_subcategoria === subcategoriaData?.id_auditoria_subcategoria &&
-                          id.id_item_original === item.id
-                        );
-
-                        if (itemData) {
-                          return {
-                            ...item,
-                            calificacion: itemData.calificacion as 0 | 100,
-                            novedad: itemData.novedad || '',
-                            accionCorrectiva: itemData.accion_correctiva || ''
-                          };
-                        }
-                        return item;
-                      })
-                    };
-                  })
-                };
-              })
-            );
-            console.log('✅ Estado de categorías actualizado con datos existentes');
-          }
-        }
-      } else {
-        console.log('📝 Auditoría vacía, listo para llenar datos');
+        if (errorEliminadas) throw errorEliminadas;
+        preguntasEliminadas = eliminadasData || [];
       }
+
+      // 3. Consolidar preguntas: base + variables - eliminadas
+      const idsEliminadas = new Set(preguntasEliminadas.map(pe => pe.id_pregunta));
+      
+      // Filtrar preguntas base eliminadas
+      const preguntasBaseFiltradas = (preguntasBase || [])
+        .filter(pregunta => !idsEliminadas.has(pregunta.id))
+        .map(pregunta => ({
+          ...pregunta,
+          tipo: 'base' as const,
+          id_original: pregunta.id
+        }));
+
+      // Agregar preguntas variables
+      const preguntasVariablesFormateadas = preguntasVariables.map(pregunta => ({
+        id: pregunta.id_pregunta_variable,
+        subcategoria_id: pregunta.id_subcategoria,
+        texto_pregunta: pregunta.texto_pregunta,
+        orden: pregunta.orden,
+        activo: pregunta.activo,
+        created_at: pregunta.created_at,
+        updated_at: pregunta.updated_at,
+        tipo: 'variable' as const,
+        id_original: pregunta.id_pregunta_variable
+      }));
+
+      const preguntasConsolidadas = [...preguntasBaseFiltradas, ...preguntasVariablesFormateadas];
+
+      console.log('📋 Preguntas modulares cargadas:', {
+        base: preguntasBaseFiltradas.length,
+        variables: preguntasVariablesFormateadas.length,
+        eliminadas: preguntasEliminadas.length,
+        total: preguntasConsolidadas.length
+      });
+
+      return preguntasConsolidadas;
 
     } catch (error) {
-      console.error('❌ Error cargando datos existentes:', error);
+      console.error('❌ Error cargando preguntas modulares:', error);
+      throw error;
     }
   };
 
-  // Funciones para manejar selección de auditorías
-  const handleSelectAudit = async (selectedAudit: any) => {
-    console.log('🎯 Auditoría seleccionada:', selectedAudit.id_auditoria);
-    setCurrentAuditId(Number(selectedAudit.id_auditoria));
-    await loadExistingAuditData(Number(selectedAudit.id_auditoria));
-    setAuditInfoSaved(true);
-    setCurrentStep(2); // Avanzar al paso de evaluación de categorías
-    setShowAuditHistoryModal(false);
-    
-    // Mostrar mensaje de éxito
-    setShowSuccessMessage(true);
-    setTimeout(() => setShowSuccessMessage(false), 3000);
+  const cargarEstructuraCatalogo = async () => {
+    try {
+      setIsLoading(true);
+      setError(null);
+
+      console.log('📋 Cargando estructura del catálogo maestro...');
+
+      // Cargar categorías
+      const { data: categoriasData, error: categoriasError } = await supabase
+        .from('categorias')
+        .select('*')
+        .eq('activo', true)
+        .order('orden', { ascending: true });
+
+      if (categoriasError) throw categoriasError;
+
+      // Cargar subcategorías
+      const { data: subcategoriasData, error: subcategoriasError } = await supabase
+        .from('subcategorias')
+        .select('*')
+        .eq('activo', true)
+        .order('orden', { ascending: true });
+
+      if (subcategoriasError) throw subcategoriasError;
+
+      // Cargar preguntas modulares (sin auditoría específica = solo base)
+      const preguntasConsolidadas = await cargarPreguntasModulares();
+
+      // Organizar datos en estructura jerárquica
+      const categoriasOrganizadas: CategoriaConSubcategorias[] = categoriasData?.map(categoria => ({
+        ...categoria,
+        subcategorias: subcategoriasData
+          ?.filter(sub => sub.categoria_id === categoria.id)
+          .map(subcategoria => ({
+            ...subcategoria,
+            preguntas: preguntasConsolidadas
+              ?.filter(pregunta => pregunta.subcategoria_id === subcategoria.id)
+              .map(pregunta => ({
+                // Convertir pregunta consolidada a formato de auditoria_pregunta temporal
+                id_auditoria_pregunta: 0, // Se asignará al crear la auditoría
+                id_auditoria: 0,
+                id_pregunta: pregunta.tipo === 'base' ? pregunta.id : 0,
+                id_pregunta_variable: pregunta.tipo === 'variable' ? pregunta.id : undefined,
+                texto_pregunta: pregunta.texto_pregunta,
+                id_categoria: categoria.id,
+                id_subcategoria: subcategoria.id,
+                orden: pregunta.orden,
+                created_at: pregunta.created_at,
+                tipo_pregunta: pregunta.tipo,
+                respuesta: undefined
+              })) || []
+          })) || []
+      })) || [];
+
+      setCategorias(categoriasOrganizadas);
+      
+      console.log('✅ Estructura del catálogo cargada:', {
+        categorias: categoriasOrganizadas.length,
+        subcategorias: subcategoriasData?.length || 0,
+        preguntas: preguntasConsolidadas?.length || 0
+      });
+
+    } catch (error) {
+      console.error('❌ Error cargando estructura del catálogo:', error);
+      setError('Error al cargar la estructura de auditoría');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const handleCreateNew = () => {
-    console.log('🆕 Creando nueva auditoría');
-    setShowAuditHistoryModal(false);
-    // Continuar con el flujo normal de creación
-    createNewAudit();
+  // Cargar estructura de auditoría existente (desde auditoria_preguntas)
+  const cargarEstructuraAuditoriaExistente = async (idAuditoria: number) => {
+    try {
+      setIsLoading(true);
+      setError(null);
+
+      console.log('📋 Cargando estructura de auditoría existente...');
+
+      // Cargar categorías y subcategorías
+      const { data: categoriasData } = await supabase
+        .from('categorias')
+        .select('*')
+        .eq('activo', true)
+        .order('orden');
+
+      const { data: subcategoriasData } = await supabase
+        .from('subcategorias')
+        .select('*')
+        .eq('activo', true)
+        .order('orden');
+
+      // Cargar preguntas específicas de esta auditoría
+      const { data: preguntasAuditoriaData, error: preguntasError } = await supabase
+        .from('auditoria_preguntas')
+        .select(`
+          *,
+          respuesta:respuestas(*)
+        `)
+        .eq('id_auditoria', idAuditoria)
+        .order('orden', { ascending: true });
+
+      if (preguntasError) throw preguntasError;
+
+      if (!categoriasData || !subcategoriasData) {
+        throw new Error('No se pudieron cargar las categorías');
+      }
+
+      // Organizar respuestas en Map
+      const respuestasMap = new Map<number, Respuesta>();
+      preguntasAuditoriaData?.forEach(pregunta => {
+        if (pregunta.respuesta && pregunta.respuesta.length > 0) {
+          respuestasMap.set(pregunta.id_auditoria_pregunta, pregunta.respuesta[0]);
+        }
+      });
+
+      // Organizar estructura jerárquica con las preguntas de la auditoría específica
+      const categoriasOrganizadas: CategoriaConSubcategorias[] = categoriasData.map(categoria => ({
+        ...categoria,
+        subcategorias: subcategoriasData
+          .filter(sub => sub.categoria_id === categoria.id)
+          .map(subcategoria => ({
+            ...subcategoria,
+            preguntas: preguntasAuditoriaData
+              ?.filter(pregunta => 
+                pregunta.id_categoria === categoria.id && 
+                pregunta.id_subcategoria === subcategoria.id
+              )
+              .map(pregunta => ({
+                ...pregunta,
+                respuesta: respuestasMap.get(pregunta.id_auditoria_pregunta)
+              })) || []
+          }))
+      }));
+
+      setCategorias(categoriasOrganizadas);
+      setRespuestas(respuestasMap);
+      
+      console.log('✅ Estructura de auditoría existente cargada:', {
+        categorias: categoriasOrganizadas.length,
+        subcategorias: subcategoriasData?.length || 0,
+        preguntas: preguntasAuditoriaData?.length || 0
+      });
+
+    } catch (error) {
+      console.error('❌ Error cargando estructura de auditoría existente:', error);
+      setError('Error al cargar la estructura de auditoría');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  // Función para crear nueva auditoría con ID único
-  const createNewAudit = async () => {
+  // Crear nueva auditoría con snapshot de preguntas
+  const crearNuevaAuditoria = async (): Promise<Auditoria | null> => {
     if (!user?.id) {
       setError('Usuario no autenticado');
-      setIsSaving(false);
-      return;
+      return null;
     }
 
     try {
-      // Generar ID único para nueva auditoría
-      const now = new Date();
-      const year = now.getFullYear();
-      const month = (now.getMonth() + 1).toString().padStart(2, '0');
-      const day = now.getDate().toString().padStart(2, '0');
-      const fechaStr = `${year}${month}${day}`;
-      const tiendaId = parseInt(auditInfo.id_tienda);
-      
-      // Buscar el próximo ID disponible que NO exista ya
-      let numeroAuditoriaDelDia = 1;
-      let auditId;
-      let exists = true;
-      
-      console.log('🔍 Buscando próximo ID disponible para tienda', tiendaId, 'fecha', auditInfo.fecha);
-      
-      while (exists) {
-        auditId = parseInt(`${fechaStr}${tiendaId.toString().padStart(2, '0')}${numeroAuditoriaDelDia.toString().padStart(3, '0')}`);
-        
-        // Verificar si este ID ya existe
-        const { data: existingAudit } = await supabase
-          .from('auditorias')
-          .select('id_auditoria')
-          .eq('id_auditoria', auditId)
-          .single();
-        
-        if (!existingAudit) {
-          exists = false;
-          console.log('✅ ID disponible encontrado:', auditId);
-        } else {
-          numeroAuditoriaDelDia++;
-          console.log('⚠️ ID', auditId, 'ya existe, probando siguiente...');
-        }
-      }
+      setIsSaving(true);
+      setError(null);
 
-      console.log('🚀 Creando auditoría con ID único verificado:', auditId);
+      console.log('🚀 Creando nueva auditoría...');
 
-      // Crear nueva auditoría
-      const { data, error } = await supabase
+      // 1. Crear el registro principal de auditoría
+      const { data: auditoriaData, error: auditoriaError } = await supabase
         .from('auditorias')
         .insert({
-          id_auditoria: auditId,
-          id_tienda: parseInt(auditInfo.id_tienda),
+          id_tienda: parseInt(formularioAuditoria.id_tienda),
           id_auditor: user.id,
-          fecha: auditInfo.fecha,
-          quienes_reciben: auditInfo.quienes_reciben,
-          calificacion_total: 0,
-          notas_personal: '',
-          notas_campanas: '',
-          notas_conclusiones: '',
-          estado: 'en_progreso'
+          fecha: formularioAuditoria.fecha,
+          quienes_reciben: formularioAuditoria.quienes_reciben,
+          observaciones: formularioAuditoria.observaciones,
+          estado: 'en_progreso',
+          calificacion_total: 0
         })
-        .select('id_auditoria')
+        .select()
+        .single();
+
+      if (auditoriaError) throw auditoriaError;
+
+      console.log('✅ Auditoría creada con ID:', auditoriaData.id_auditoria);
+
+      // 2. Crear snapshot de todas las preguntas del catálogo
+      const preguntasSnapshot: Omit<AuditoriaPregunta, 'id_auditoria_pregunta' | 'created_at'>[] = [];
+      
+      categorias.forEach(categoria => {
+        categoria.subcategorias.forEach(subcategoria => {
+          subcategoria.preguntas.forEach(pregunta => {
+            preguntasSnapshot.push({
+              id_auditoria: auditoriaData.id_auditoria,
+              id_pregunta: pregunta.id_pregunta,
+              texto_pregunta: pregunta.texto_pregunta,
+              id_categoria: categoria.id,
+              id_subcategoria: subcategoria.id,
+              orden: pregunta.orden
+            });
+          });
+        });
+      });
+
+      const { data: preguntasAuditoriaData, error: preguntasError } = await supabase
+        .from('auditoria_preguntas')
+        .insert(preguntasSnapshot)
+        .select();
+
+      if (preguntasError) throw preguntasError;
+
+      console.log('✅ Snapshot de preguntas creado:', preguntasAuditoriaData.length, 'preguntas');
+
+      // 3. Actualizar estados locales
+      setModoRevision(false); // Modo creación nueva
+      setAuditoriaActual(auditoriaData);
+      setPreguntasAuditoria(preguntasAuditoriaData);
+      
+      // 4. Actualizar categorías con IDs reales de auditoria_preguntas
+      actualizarCategoriasConPreguntasAuditoria(preguntasAuditoriaData);
+
+      setCurrentStep(2);
+      setShowSuccessMessage(true);
+      setTimeout(() => setShowSuccessMessage(false), 3000);
+
+      return auditoriaData;
+
+    } catch (error) {
+      console.error('❌ Error creando auditoría:', error);
+      setError('Error al crear la auditoría');
+      return null;
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Actualizar categorías con los IDs reales de auditoria_preguntas
+  const actualizarCategoriasConPreguntasAuditoria = (preguntasAuditoriaData: AuditoriaPregunta[]) => {
+    setCategorias(prev => 
+      prev.map(categoria => ({
+        ...categoria,
+        subcategorias: categoria.subcategorias.map(subcategoria => ({
+          ...subcategoria,
+          preguntas: subcategoria.preguntas.map(pregunta => {
+            const preguntaAuditoria = preguntasAuditoriaData.find(pa => 
+              pa.id_categoria === categoria.id && 
+              pa.id_subcategoria === subcategoria.id && 
+              pa.id_pregunta === pregunta.id_pregunta
+            );
+            
+            return preguntaAuditoria ? {
+              ...preguntaAuditoria,
+              respuesta: respuestas.get(preguntaAuditoria.id_auditoria_pregunta)
+            } : pregunta;
+          })
+        }))
+      }))
+    );
+  };
+
+  // Guardar respuesta individual
+  const guardarRespuesta = async (
+    id_auditoria_pregunta: number, 
+    respuesta: boolean, 
+    comentario?: string, 
+    accion_correctiva?: string
+  ): Promise<boolean> => {
+    if (!auditoriaActual) {
+      setError('No hay auditoría activa');
+      return false;
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('respuestas')
+        .upsert({
+          id_auditoria_pregunta,
+          respuesta,
+          comentario: comentario || null,
+          accion_correctiva: accion_correctiva || null
+        })
+        .select()
         .single();
 
       if (error) throw error;
-      if (!data) throw new Error('No se pudo crear la auditoría');
 
-      if (data.id_auditoria) {        
-        setCurrentAuditId(Number(data.id_auditoria));
-        console.log('✅ Nueva auditoría creada con ID:', data.id_auditoria);
-        setAuditInfoSaved(true);
-        setCurrentStep(2); // Avanzar al siguiente paso
-        setIsSaving(false);
-        
-        // Mostrar mensaje de éxito
-        setShowSuccessMessage(true);
-        setTimeout(() => setShowSuccessMessage(false), 3000);
-      } else {
-        throw new Error('No se recibió un ID de auditoría válido');
-      }
-    } catch (error) {
-      console.error('❌ Error creando nueva auditoría:', error);
-      setError('Error al crear la auditoría');
-      setIsSaving(false);
-    }
-  };
-
-  // Función principal para guardar información de auditoría
-  const handleAuditInfoSave = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (isSaving) return;
-    
-    setIsSaving(true);
-    setError(null);
-
-    try {
-      if (!user) throw new Error('Usuario no autenticado');
-
-      // Verificar auditorías existentes para esta tienda (últimos 30 días)
-      const { data: allAuditsData, error: auditsError } = await supabase
-        .from('auditorias')
-        .select('*')
-        .eq('id_tienda', parseInt(auditInfo.id_tienda))
-        .gte('fecha', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0])
-        .order('fecha', { ascending: false })
-        .order('id_auditoria', { ascending: false });
-
-      if (auditsError) throw auditsError;
-
-      if (allAuditsData && allAuditsData.length > 0) {
-        // Mostrar historial de auditorías para que el usuario seleccione
-        console.log('📋 Auditorías existentes encontradas:', allAuditsData.length);
-        setExistingAudits(allAuditsData);
-        setShowAuditHistoryModal(true);
-        setIsSaving(false);
-        return;
-      }
-
-      // Si no hay auditorías existentes, crear nueva directamente
-      await createNewAudit();
+      // Actualizar estado local
+      setRespuestas(prev => new Map(prev.set(id_auditoria_pregunta, data)));
       
-    } catch (error) {
-      console.error('❌ Error en handleAuditInfoSave:', error);
-      setError('Error al procesar la información de auditoría');
-      setIsSaving(false);
-    }
-  };
+      // Actualizar categorías con la nueva respuesta
+      setCategorias(prev => 
+        prev.map(categoria => ({
+          ...categoria,
+          subcategorias: categoria.subcategorias.map(subcategoria => ({
+            ...subcategoria,
+            preguntas: subcategoria.preguntas.map(pregunta => 
+              pregunta.id_auditoria_pregunta === id_auditoria_pregunta
+                ? { ...pregunta, respuesta: data }
+                : pregunta
+            )
+          }))
+        }))
+      );
 
-  // Función para guardar auditoría final con todas las calificaciones
-  const handleFinalSave = async (): Promise<boolean> => {
-    if (!currentAuditId) {
-      setError('No hay una auditoría activa');
-      return false;
-    }
-
-    setIsSaving(true);
-    setError(null);
-
-    try {
-      console.log('💾 Iniciando guardado final de auditoría:', currentAuditId);
-
-      // Calcular calificación total
-      const calificacionTotal = getCalificacionTotalTienda(categories);
-
-      // Actualizar información principal de auditoría
-      const { error: updateError } = await supabase
-        .from('auditorias')
-        .update({
-          calificacion_total: calificacionTotal,
-          notas_personal: extraNotes.personal,
-          notas_campanas: extraNotes.campanasTienda,
-          notas_conclusiones: extraNotes.conclusiones,
-          estado: 'completada'
-        })
-        .eq('id_auditoria', currentAuditId);
-
-      if (updateError) throw updateError;
-
-      console.log('🔧 Guardando categorías, subcategorías e items...');
-      
-      // Guardar categorías, subcategorías e items con IDs automáticos
-      for (let catIndex = 0; catIndex < categories.length; catIndex++) {
-        const categoria = categories[catIndex];
-        
-        // Filtrar subcategorías que tienen items con calificación
-        const subcategoriasValidas = categoria.subcategorias.filter(subcat => 
-          subcat.items.some(item => item.calificacion !== null && item.calificacion !== undefined)
-        );
-        
-        if (subcategoriasValidas.length === 0) {
-          console.log('⚠️ Saltando categoría sin items válidos:', categoria.nombre);
-          continue;
-        }
-        
-        const promedioCat = getCategoriaPromedio(categoria);
-        
-        console.log('📁 Creando categoría:', {
-          index: catIndex + 1,
-          nombre: categoria.nombre,
-          subcategoriasValidas: subcategoriasValidas.length
-        });
-        
-        // Insertar categoría con ID automático
-        const { data: categoriaData, error: catError } = await supabase
-          .from('auditoria_categorias')
-          .insert({
-            id_auditoria: Number(currentAuditId),
-            nombre_categoria: categoria.nombre,
-            peso: categoria.peso,
-            promedio: promedioCat
-          })
-          .select('id_auditoria_categoria')
-          .single();
-
-        if (catError) {
-          console.error('❌ Error al crear categoría:', catError);
-          continue;
-        }
-
-        if (!categoriaData?.id_auditoria_categoria) {
-          console.error('❌ No se recibió ID de categoría');
-          continue;
-        }
-
-        const categoriaIdReal = categoriaData.id_auditoria_categoria;
-        console.log('✅ Categoría creada con ID:', categoriaIdReal);
-
-        // Procesar subcategorías
-        for (let subcatIndex = 0; subcatIndex < subcategoriasValidas.length; subcatIndex++) {
-          const subcat = subcategoriasValidas[subcatIndex];
-          
-          // Filtrar items válidos
-          const itemsValidos = subcat.items.filter(item => 
-            item.calificacion !== null && item.calificacion !== undefined
-          );
-          
-          if (itemsValidos.length === 0) continue;
-          
-          const promedioSubcat = getSubcategoriaTotal(subcat);
-          
-          console.log('📂 Creando subcategoría:', {
-            index: subcatIndex + 1,
-            nombre: subcat.nombre,
-            categoriaIdReal,
-            itemsValidos: itemsValidos.length
-          });
-          
-          // Insertar subcategoría con ID automático
-          const { data: subcategoriaData, error: subcatError } = await supabase
-            .from('auditoria_subcategorias')
-            .insert({
-              id_auditoria_categoria: categoriaIdReal,
-              nombre_subcategoria: subcat.nombre,
-              promedio: promedioSubcat
-            })
-            .select('id_auditoria_subcategoria')
-            .single();
-
-          if (subcatError) {
-            console.error('❌ Error al crear subcategoría:', subcatError);
-            continue;
-          }
-
-          if (!subcategoriaData?.id_auditoria_subcategoria) {
-            console.error('❌ No se recibió ID de subcategoría');
-            continue;
-          }
-
-          const subcategoriaIdReal = subcategoriaData.id_auditoria_subcategoria;
-          console.log('✅ Subcategoría creada con ID:', subcategoriaIdReal);
-
-          // Insertar items
-          for (let itemIndex = 0; itemIndex < itemsValidos.length; itemIndex++) {
-            const item = itemsValidos[itemIndex];
-            
-            console.log('💾 Insertando item:', {
-              index: itemIndex + 1,
-              subcategoriaIdReal,
-              item: item.label,
-              calificacion: item.calificacion
-            });
-            
-            const { error: itemError } = await supabase
-              .from('auditoria_items')
-              .insert({
-                id_auditoria_subcategoria: subcategoriaIdReal,
-                item_label: item.label,
-                calificacion: item.calificacion,
-                novedad: item.novedad || ''
-              });
-
-            if (itemError) {
-              console.error('❌ Error al crear item:', itemError);
-              continue;
-            } else {
-              console.log('✅ Item creado exitosamente');
-            }
-          }
-        }
-      }
-
-      // Guardar fotos del checklist (si las hay)
-      let fotoCounter = 1;
-      for (const [tipo, imageUrls] of Object.entries(uploadedChecklistImages)) {
-        if (imageUrls && imageUrls.length > 0) {
-          // Como ya tenemos las URLs de las imágenes, las guardamos directamente
-          await supabase.from('auditoria_fotos').insert({
-            id_auditoria_foto: parseInt(`${currentAuditId}${fotoCounter.toString().padStart(3, '0')}`),
-            id_auditoria: currentAuditId,
-            tipo_foto: tipo,
-            url_foto: imageUrls[0] // Usar la primera URL
-          });
-
-          fotoCounter++;
-        }
-      }
-
-      console.log('🎉 ¡Auditoría guardada exitosamente!');
-      setShowSuccessMessage(true);
-      setIsSaving(false);
+      console.log('💾 Respuesta guardada:', { id_auditoria_pregunta, respuesta, comentario });
       return true;
 
     } catch (error) {
-      console.error('❌ Error en guardado final:', error);
-      setError('Error al guardar la auditoría');
-      setIsSaving(false);
+      console.error('❌ Error guardando respuesta:', error);
+      setError('Error al guardar la respuesta');
       return false;
     }
   };
 
+  // Calcular resumen con ponderación por peso de categoría
+  const calcularResumen = (): ResumenAuditoria => {
+    let totalPreguntas = 0;
+    let preguntasRespondidas = 0;
+    let sumaPonderada = 0;
+    let pesoTotal = 0;
+
+    const categoriasResumen: ResumenCategoria[] = categorias.map(categoria => {
+      let categoriaTotalPreguntas = 0;
+      let categoriaAprobadas = 0;
+      let categoriaRespondidas = 0;
+
+      categoria.subcategorias.forEach(subcategoria => {
+        subcategoria.preguntas.forEach(pregunta => {
+          categoriaTotalPreguntas++;
+          totalPreguntas++;
+          
+          if (pregunta.respuesta) {
+            categoriaRespondidas++;
+            preguntasRespondidas++;
+            
+            if (pregunta.respuesta.respuesta === true) {
+              categoriaAprobadas++;
+            }
+          }
+        });
+      });
+
+      const porcentajeCumplimiento = categoriaRespondidas > 0 
+        ? Math.round((categoriaAprobadas / categoriaRespondidas) * 100) 
+        : 0;
+      
+      const contribucionPonderada = (porcentajeCumplimiento * categoria.peso) / 100;
+      
+      // Solo contar para el total si tiene preguntas respondidas
+      if (categoriaRespondidas > 0) {
+        sumaPonderada += contribucionPonderada;
+        pesoTotal += categoria.peso;
+      }
+
+      return {
+        categoria_id: categoria.id,
+        categoria_nombre: categoria.nombre,
+        peso_categoria: categoria.peso,
+        total_preguntas: categoriaTotalPreguntas,
+        preguntas_aprobadas: categoriaAprobadas,
+        porcentaje_cumplimiento: porcentajeCumplimiento,
+        contribucion_ponderada: contribucionPonderada
+      };
+    });
+
+    const calificacionTotalPonderada = pesoTotal > 0 ? Math.round(sumaPonderada / pesoTotal * 100) : 0;
+
+    return {
+      total_preguntas: totalPreguntas,
+      preguntas_respondidas: preguntasRespondidas,
+      preguntas_aprobadas: categoriasResumen.reduce((acc, cat) => acc + cat.preguntas_aprobadas, 0),
+      preguntas_reprobadas: preguntasRespondidas - categoriasResumen.reduce((acc, cat) => acc + cat.preguntas_aprobadas, 0),
+      calificacion_total_ponderada: calificacionTotalPonderada,
+      categorias_resumen: categoriasResumen
+    };
+  };
+
+  // Finalizar auditoría y calcular calificación final
+  const finalizarAuditoria = async (observacionesFinales?: string): Promise<boolean> => {
+    if (!auditoriaActual) {
+      setError('No hay auditoría activa');
+      return false;
+    }
+
+    try {
+      setIsSaving(true);
+
+      const resumen = calcularResumen();
+      
+      const { error } = await supabase
+        .from('auditorias')
+        .update({
+          estado: 'completada',
+          calificacion_total: resumen.calificacion_total_ponderada,
+          observaciones: observacionesFinales || auditoriaActual.observaciones,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id_auditoria', auditoriaActual.id_auditoria);
+
+      if (error) throw error;
+
+      console.log('✅ Auditoría finalizada con calificación:', resumen.calificacion_total_ponderada);
+      
+      setShowSuccessMessage(true);
+      setTimeout(() => setShowSuccessMessage(false), 3000);
+      
+      return true;
+
+    } catch (error) {
+      console.error('❌ Error finalizando auditoría:', error);
+      setError('Error al finalizar la auditoría');
+      return false;
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Cargar auditoría existente con todas sus respuestas
+  const cargarAuditoriaExistente = async (id_auditoria: number): Promise<boolean> => {
+    try {
+      setIsLoading(true);
+      setError(null);
+
+      console.log('📖 Cargando auditoría existente ID:', id_auditoria);
+
+      // 1. Cargar auditoría principal
+      const { data: auditoriaData, error: auditoriaError } = await supabase
+        .from('auditorias')
+        .select('*')
+        .eq('id_auditoria', id_auditoria)
+        .single();
+
+      if (auditoriaError) throw auditoriaError;
+
+      // 2. Usar la función específica para cargar estructura de auditoría existente
+      await cargarEstructuraAuditoriaExistente(id_auditoria);
+
+      // 3. Actualizar formulario con datos de la auditoría
+      setFormularioAuditoria({
+        id_tienda: auditoriaData.id_tienda.toString(),
+        fecha: auditoriaData.fecha,
+        quienes_reciben: auditoriaData.quienes_reciben || '',
+        observaciones: auditoriaData.observaciones || ''
+      });
+
+      // 4. Actualizar estados
+      setModoRevision(true); // Activar modo revisión
+      setAuditoriaActual(auditoriaData);
+
+      console.log('✅ Auditoría existente cargada correctamente:', {
+        id: id_auditoria,
+        fecha: auditoriaData.fecha
+      });
+
+      return true;
+
+    } catch (error) {
+      console.error('❌ Error cargando auditoría existente:', error);
+      setError('Error al cargar la auditoría');
+      return false;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Función para recargar auditoría sin cambiar el modo revisión (para edición de preguntas)
+  const recargarAuditoriaActual = async (id_auditoria: number): Promise<boolean> => {
+    try {
+      if (!auditoriaActual || auditoriaActual.id_auditoria !== id_auditoria) {
+        console.warn('No hay auditoría activa o no coincide con la ID');
+        return false;
+      }
+
+      console.log('🔄 Recargando auditoría actual ID:', id_auditoria);
+
+      // 1. Cargar auditoría principal (actualizar datos)
+      const { data: auditoriaData, error: auditoriaError } = await supabase
+        .from('auditorias')
+        .select('*')
+        .eq('id_auditoria', id_auditoria)
+        .single();
+
+      if (auditoriaError) throw auditoriaError;
+
+      // 2. Recargar estructura con preguntas modulares
+      await cargarEstructuraAuditoriaExistente(id_auditoria);
+
+      // 3. Actualizar la auditoría actual SIN cambiar modo revisión
+      setAuditoriaActual(auditoriaData);
+
+      console.log('✅ Auditoría actual recargada correctamente');
+      return true;
+
+    } catch (error) {
+      console.error('❌ Error recargando auditoría actual:', error);
+      return false;
+    }
+  };
+
+  // Gestión de preguntas en el catálogo maestro
+  const agregarPregunta = async (nuevaPregunta: NuevaPregunta): Promise<Pregunta | null> => {
+    try {
+      const { data, error } = await supabase
+        .from('preguntas')
+        .insert(nuevaPregunta)
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      console.log('✅ Pregunta agregada al catálogo:', data);
+      await cargarEstructuraCatalogo(); // Recargar estructura
+      
+      return data;
+
+    } catch (error) {
+      console.error('❌ Error agregando pregunta:', error);
+      setError('Error al agregar la pregunta');
+      return null;
+    }
+  };
+
+  const editarPregunta = async (preguntaEditada: EditarPregunta): Promise<boolean> => {
+    try {
+      const { error } = await supabase
+        .from('preguntas')
+        .update({
+          texto_pregunta: preguntaEditada.texto_pregunta,
+          subcategoria_id: preguntaEditada.subcategoria_id,
+          orden: preguntaEditada.orden
+        })
+        .eq('id', preguntaEditada.id);
+
+      if (error) throw error;
+
+      console.log('✅ Pregunta editada en el catálogo:', preguntaEditada.id);
+      await cargarEstructuraCatalogo(); // Recargar estructura
+      
+      return true;
+
+    } catch (error) {
+      console.error('❌ Error editando pregunta:', error);
+      setError('Error al editar la pregunta');
+      return false;
+    }
+  };
+
+  const eliminarPregunta = async (preguntaId: number): Promise<boolean> => {
+    try {
+      const { error } = await supabase
+        .from('preguntas')
+        .update({ activo: false })
+        .eq('id', preguntaId);
+
+      if (error) throw error;
+
+      console.log('✅ Pregunta desactivada del catálogo:', preguntaId);
+      await cargarEstructuraCatalogo(); // Recargar estructura
+      
+      return true;
+
+    } catch (error) {
+      console.error('❌ Error desactivando pregunta:', error);
+      setError('Error al eliminar la pregunta');
+      return false;
+    }
+  };
+
+  // Handlers para formularios y UI
+  const handleFormularioChange = (field: keyof FormularioAuditoria, value: any) => {
+    setFormularioAuditoria(prev => ({
+      ...prev,
+      [field]: value
+    }));
+  };
+
+  const handleRespuestaChange = async (id_auditoria_pregunta: number, valor: boolean) => {
+    await guardarRespuesta(id_auditoria_pregunta, valor);
+  };
+
+  const handleComentarioChange = async (id_auditoria_pregunta: number, comentario: string) => {
+    const respuestaActual = respuestas.get(id_auditoria_pregunta);
+    if (respuestaActual) {
+      await guardarRespuesta(
+        id_auditoria_pregunta, 
+        respuestaActual.respuesta, 
+        comentario, 
+        respuestaActual.accion_correctiva
+      );
+    }
+  };
+
+  const handleAccionCorrectivaChange = async (id_auditoria_pregunta: number, accionCorrectiva: string) => {
+    const respuestaActual = respuestas.get(id_auditoria_pregunta);
+    if (respuestaActual) {
+      await guardarRespuesta(
+        id_auditoria_pregunta, 
+        respuestaActual.respuesta, 
+        respuestaActual.comentario, 
+        accionCorrectiva
+      );
+    }
+  };
+
+  // Obtener lista de auditorías anteriores por tienda
+  const obtenerAuditoriasAnteriores = async (idTienda: number): Promise<Auditoria[]> => {
+    try {
+      const { data, error } = await supabase
+        .from('auditorias')
+        .select('*')
+        .eq('id_tienda', idTienda)
+        .order('created_at', { ascending: false })
+        .limit(10);
+
+      if (error) throw error;
+      return data || [];
+    } catch (error) {
+      console.error('Error obteniendo auditorías anteriores:', error);
+      return [];
+    }
+  };
+
+  // Cargar auditoría anterior específica con sus respuestas
+  const cargarAuditoriaAnterior = async (idAuditoria: number): Promise<boolean> => {
+    try {
+      setIsLoading(true);
+      setError(null);
+
+      console.log('🔄 Cargando auditoría anterior ID:', idAuditoria);
+
+      // 1. Cargar la auditoría
+      const { data: auditoriaData, error: auditoriaError } = await supabase
+        .from('auditorias')
+        .select('*')
+        .eq('id_auditoria', idAuditoria)
+        .single();
+
+      if (auditoriaError) throw auditoriaError;
+
+      // 2. Cargar las preguntas de esa auditoría con sus respuestas
+      const { data: preguntasAuditoriaData, error: preguntasError } = await supabase
+        .from('auditoria_preguntas')
+        .select(`
+          *,
+          respuesta:respuestas(*)
+        `)
+        .eq('id_auditoria', idAuditoria);
+
+      if (preguntasError) throw preguntasError;
+
+      // 3. Cargar estructura actual del catálogo
+      await cargarEstructuraCatalogo();
+
+      // 4. Actualizar formulario con datos de la auditoría anterior (excepto fecha)
+      setFormularioAuditoria({
+        id_tienda: auditoriaData.id_tienda.toString(),
+        fecha: new Date().toISOString().split('T')[0], // Fecha actual para nueva auditoría
+        quienes_reciben: auditoriaData.quienes_reciben || '',
+        observaciones: auditoriaData.observaciones || ''
+      });
+
+      // 5. Crear nueva auditoría
+      setModoRevision(false); // Esto será una nueva auditoría
+      const auditoriaCreada = await crearNuevaAuditoria();
+      if (!auditoriaCreada) return false;
+
+      // 6. Aplicar respuestas anteriores a las preguntas que coincidan
+      for (const preguntaAnterior of preguntasAuditoriaData) {
+        if (preguntaAnterior.respuesta && preguntaAnterior.respuesta.length > 0) {
+          const respuestaAnterior = preguntaAnterior.respuesta[0];
+          
+          // Buscar pregunta equivalente en la nueva auditoría por texto
+          const preguntaActual = preguntasAuditoria.find(p => 
+            p.texto_pregunta === preguntaAnterior.texto_pregunta
+          );
+
+          if (preguntaActual) {
+            await guardarRespuesta(
+              preguntaActual.id_auditoria_pregunta,
+              respuestaAnterior.respuesta,
+              respuestaAnterior.comentario,
+              respuestaAnterior.accion_correctiva
+            );
+          }
+        }
+      }
+
+      console.log('✅ Auditoría anterior cargada y aplicada exitosamente');
+      return true;
+
+    } catch (error) {
+      console.error('❌ Error cargando auditoría anterior:', error);
+      setError('Error al cargar la auditoría anterior');
+      return false;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // ========== NUEVAS FUNCIONES MODULARES ==========
+  
+  // Agregar pregunta variable específica para una auditoría
+  const agregarPreguntaVariable = async (idAuditoria: number, subcategoriaId: number, textoPregunta: string): Promise<boolean> => {
+    try {
+      if (!auditoriaActual || auditoriaActual.id_auditoria !== idAuditoria) {
+        throw new Error('No hay auditoría activa o no coincide con la ID proporcionada');
+      }
+
+      // Obtener el siguiente orden para esta subcategoría en esta auditoría
+      const { data: ultimaPregunta } = await supabase
+        .from('preguntas_variables')
+        .select('orden')
+        .eq('id_auditoria', idAuditoria)
+        .eq('id_subcategoria', subcategoriaId)
+        .order('orden', { ascending: false })
+        .limit(1);
+
+      const siguienteOrden = ultimaPregunta && ultimaPregunta.length > 0 ? ultimaPregunta[0].orden + 1 : 1000; // Empezar en 1000 para distinguir de preguntas base
+
+      // Insertar pregunta variable
+      const { error: errorVariable } = await supabase
+        .from('preguntas_variables')
+        .insert({
+          id_auditoria: idAuditoria,
+          id_subcategoria: subcategoriaId,
+          texto_pregunta: textoPregunta.trim(),
+          orden: siguienteOrden,
+          activo: true
+        });
+
+      if (errorVariable) throw errorVariable;
+
+      // Obtener información de subcategoría para categoría
+      const { data: subcategoriaInfo } = await supabase
+        .from('subcategorias')
+        .select('categoria_id')
+        .eq('id', subcategoriaId)
+        .single();
+
+      if (!subcategoriaInfo) {
+        throw new Error('No se pudo obtener información de la subcategoría');
+      }
+
+      // Agregar a tabla auditoria_preguntas
+      const { error: errorAuditoriaPregunta } = await supabase
+        .from('auditoria_preguntas')
+        .insert({
+          id_auditoria: idAuditoria,
+          id_pregunta: null, // NULL para preguntas variables
+          texto_pregunta: textoPregunta.trim(),
+          id_categoria: subcategoriaInfo.categoria_id,
+          id_subcategoria: subcategoriaId,
+          orden: siguienteOrden
+        });
+
+      if (errorAuditoriaPregunta) throw errorAuditoriaPregunta;
+
+      console.log('✅ Pregunta variable agregada:', {
+        auditoriaId: idAuditoria,
+        subcategoriaId,
+        texto: textoPregunta.trim(),
+        orden: siguienteOrden
+      });
+
+      // Recargar auditoría actual sin cambiar modo revisión
+      await recargarAuditoriaActual(idAuditoria);
+      return true;
+
+    } catch (error) {
+      console.error('❌ Error agregando pregunta variable:', error);
+      setError('Error al agregar la pregunta a la auditoría');
+      return false;
+    }
+  };
+
+  // Eliminar pregunta específica de una auditoría (marcarla como eliminada)
+  const eliminarPreguntaDeAuditoria = async (idAuditoria: number, idPregunta: number, motivo?: string): Promise<boolean> => {
+    try {
+      if (!auditoriaActual || auditoriaActual.id_auditoria !== idAuditoria) {
+        throw new Error('No hay auditoría activa o no coincide con la ID proporcionada');
+      }
+
+      // Marcar pregunta como eliminada para esta auditoría
+      const { error: errorEliminada } = await supabase
+        .from('preguntas_eliminadas')
+        .insert({
+          id_auditoria: idAuditoria,
+          id_pregunta: idPregunta,
+          eliminado_por: null, // Podrías obtener el usuario actual aquí
+          motivo: motivo || 'Eliminada durante edición de auditoría'
+        });
+
+      if (errorEliminada) {
+        // Si falla, podría ser porque ya está eliminada
+        if (errorEliminada.code === '23505') { // Unique constraint violation
+          console.log('⚠️ Pregunta ya estaba eliminada de esta auditoría');
+          return true;
+        }
+        throw errorEliminada;
+      }
+
+      // Eliminar de auditoria_preguntas
+      const { error: errorAuditoriaPregunta } = await supabase
+        .from('auditoria_preguntas')
+        .delete()
+        .eq('id_auditoria', idAuditoria)
+        .eq('id_pregunta', idPregunta);
+
+      if (errorAuditoriaPregunta) throw errorAuditoriaPregunta;
+
+      console.log('✅ Pregunta eliminada de auditoría:', {
+        auditoriaId: idAuditoria,
+        preguntaId: idPregunta,
+        motivo
+      });
+
+      // Recargar auditoría actual sin cambiar modo revisión
+      await recargarAuditoriaActual(idAuditoria);
+      return true;
+
+    } catch (error) {
+      console.error('❌ Error eliminando pregunta de auditoría:', error);
+      setError('Error al eliminar la pregunta de la auditoría');
+      return false;
+    }
+  };
+
+  // Efectos
+  useEffect(() => {
+    cargarEstructuraCatalogo();
+  }, []);
+
+  // Retorno del hook
   return {
-    // Estados
-    categories,
-    usuarios,
-    usuariosTienda,
-    tiendas,
-    error,
+    // Estados principales
+    categorias,
+    auditoriaActual,
+    preguntasAuditoria,
+    formularioAuditoria,
+    respuestas,
+    
+    // Estados de control
+    isLoading,
     isSaving,
-    currentAuditId,
-    auditInfoSaved,
-    showSuccessMessage,
+    error,
     currentStep,
-    auditInfo,
-    extraNotes,
-    uploadedChecklistImages,
-    existingAudits,
-    showAuditHistoryModal,
-    setShowAuditHistoryModal,
+    showSuccessMessage,
+    modoRevision,
+    
+    // Estados de gestión de preguntas
+    showPreguntaModal,
+    preguntaEditando,
+    subcategoriaSeleccionada,
+    
+    // Funciones principales
+    cargarEstructuraCatalogo,
+    crearNuevaAuditoria,
+    guardarRespuesta,
+    finalizarAuditoria,
+    cargarAuditoriaExistente,
+    calcularResumen,
+    obtenerAuditoriasAnteriores,
+    cargarAuditoriaAnterior,
+    
+    // Gestión de preguntas del catálogo
+    agregarPregunta,
+    editarPregunta,
+    eliminarPregunta,
+    
+    // Gestión de preguntas modulares
+    agregarPreguntaVariable,
+    eliminarPreguntaDeAuditoria,
+    recargarAuditoriaActual,
+    cargarPreguntasModulares,
     
     // Handlers
-    handleAuditInfoChange,
-    handleExtraNotesChange,
-    handleChecklistImageChange,
-    handleCalificacionChange,
-    handleNovedadChange,
-    handleSelectAudit,
-    handleCreateNew,
-    handleAuditInfoSave,
-    handleFinalSave,
+    handleFormularioChange,
+    handleRespuestaChange,
+    handleComentarioChange,
+    handleAccionCorrectivaChange,
     
-    // Setters adicionales
-    setShowSuccessMessage,
+    // Funciones de carga específicas
+    cargarEstructuraAuditoriaExistente,
+    
+    // Setters
     setCurrentStep,
-    
-    // Utilidades de cálculo
-    getSubcategoriaTotal,
-    getCategoriaPromedio,
-    getCalificacionTotalTienda: () => getCalificacionTotalTienda(categories)
+    setShowSuccessMessage,
+    setShowPreguntaModal,
+    setPreguntaEditando,
+    setSubcategoriaSeleccionada,
+    setError,
+    setModoRevision,
+    setAuditoriaActual
   };
 };
