@@ -10,6 +10,7 @@ import SalesSummary from './pages/SalesSummary';
 import Goals from './pages/Goals';
 import Inventory from './pages/Inventory';
 import Auditoria from './pages/Auditoria';
+import PreguntasMaestras from './pages/PreguntasMaestras';
 import Auth from './pages/Auth';
 import Profile from './pages/Profile';
 import Settings from './pages/Settings';
@@ -77,6 +78,7 @@ function App() {
             <Route path="/users" element={<Users />} />
             <Route path="/statistics" element={<Statistics />} />
             <Route path="/auditoria" element={<Auditoria />} />
+            <Route path="/preguntas-maestras" element={<PreguntasMaestras />} />
             <Route path="/analytics" element={<Analytics />} />
             <Route path="/incidents" element={<Incidents />} />
             <Route path="/schedule" element={<Schedule />} />

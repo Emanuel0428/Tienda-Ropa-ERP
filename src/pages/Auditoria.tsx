@@ -82,6 +82,8 @@ const Auditoria = () => {
   const [mostrarFormularioNuevaPregunta, setMostrarFormularioNuevaPregunta] = useState<{[key: number]: boolean}>({});
   const [textoNuevaPregunta, setTextoNuevaPregunta] = useState<{[key: number]: string}>({});
 
+
+
   // Lista de imágenes del checklist
   const checklistImagenes = [
     'Fachada',
@@ -482,7 +484,18 @@ const Auditoria = () => {
   const renderFormularioInicial = () => (
     <Card className="max-w-2xl mx-auto">
       <div className="p-6">
-        <h2 className="text-2xl font-bold text-gray-800 mb-6">Nueva Auditoría</h2>
+        <div className="flex justify-between items-start mb-6">
+          <h2 className="text-2xl font-bold text-gray-800">Nueva Auditoría</h2>
+          <Button
+            type="button"
+            onClick={() => navigate('/preguntas-maestras')}
+            variant="secondary"
+            className="text-gray-600 hover:text-gray-800 px-2 py-1"
+            title="Gestionar preguntas maestras"
+          >
+            ⋯
+          </Button>
+        </div>
         
         <form onSubmit={async (e) => {
           e.preventDefault();
@@ -675,6 +688,8 @@ const Auditoria = () => {
       </div>
     </Card>
   );
+
+
 
   // Renderizar lista de preguntas por categoría
   const renderPreguntas = () => (
