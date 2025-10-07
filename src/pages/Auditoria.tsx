@@ -7,6 +7,7 @@ import { Badge } from '../components/ui/Badge';
 import { useAudit } from '../hooks/useAudit';
 import { supabase } from '../supabaseClient';
 import type { Auditoria, Respuesta } from '../types/audit';
+import GestorFotos from '../components/GestorFotos';
 
 const Auditoria = () => {
   const navigate = useNavigate();
@@ -71,11 +72,10 @@ const Auditoria = () => {
   const [cargandoTiendas, setCargandoTiendas] = useState(false);
   const [tiendaSeleccionada, setTiendaSeleccionada] = useState<{id_tienda: number, nombre: string} | null>(null);
 
-  // Estados para notas y checklist de imágenes
+  // Estados para notas y conclusiones
   const [notasPersonal, setNotasPersonal] = useState('');
   const [notasCampanas, setNotasCampanas] = useState('');
   const [conclusiones, setConclusiones] = useState('');
-  const [imagenesSubidas, setImagenesSubidas] = useState<{[key: string]: string[]}>({});
 
   // Estados para edición de preguntas
   const [modoEdicionPreguntas, setModoEdicionPreguntas] = useState<{[key: number]: boolean}>({});
@@ -84,19 +84,7 @@ const Auditoria = () => {
 
 
 
-  // Lista de imágenes del checklist
-  const checklistImagenes = [
-    'Fachada',
-    'Campaña y promociones',
-    'General de la tienda por los lados',
-    'Punto de pago',
-    'Vestier',
-    'Implementos de aseo',
-    'Bodegas',
-    'Personal de la tienda',
-    'Libro verde y carpetas',
-    'Cuaderno de seguimiento de pptos e informes de la marca'
-  ];
+
 
   // Cargar tiendas disponibles al montar el componente
   useEffect(() => {
@@ -167,24 +155,7 @@ const Auditoria = () => {
     }
   };
 
-  // Función para manejar la subida de imágenes
-  const handleImageUpload = (categoria: string, files: FileList | null) => {
-    if (!files) return;
-    
-    Array.from(files).forEach(file => {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        if (e.target?.result) {
-          const result = e.target.result as string;
-          setImagenesSubidas(prev => ({
-            ...prev,
-            [categoria]: [...(prev[categoria] || []), result]
-          }));
-        }
-      };
-      reader.readAsDataURL(file);
-    });
-  };
+
 
   // Función para alternar modo de edición de preguntas por subcategoría
   const toggleModoEdicionPreguntas = (subcategoriaId: number) => {
@@ -499,6 +470,7 @@ const Auditoria = () => {
         
         <form onSubmit={async (e) => {
           e.preventDefault();
+          if (isSaving) return; // Prevenir múltiples envíos
           await crearNuevaAuditoria();
         }} className="space-y-6">
           
@@ -751,13 +723,8 @@ const Auditoria = () => {
               )}
             </>
           ) : (
-            <Button 
-              onClick={manejarFinalizarAuditoria}
-              variant="primary"
-              disabled={isSaving}
-            >
-              {isSaving ? 'Finalizando...' : 'Finalizar Auditoría'}
-            </Button>
+            // En modo normal (no revisión) no mostrar botones adicionales aquí
+            <></>
           )}
         </div>
       </div>
@@ -1028,116 +995,36 @@ const Auditoria = () => {
         );
       })}
 
-      {/* Sección de Notas y Conclusiones */}
+      {/* Navegación al siguiente paso */}
       <Card className="mt-8">
-        <div className="bg-gradient-to-r from-purple-500 to-purple-600 text-white p-4">
-          <h3 className="text-xl font-bold">📝 Notas y Conclusiones</h3>
-        </div>
-        
-        <div className="p-6 space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Personal
-              </label>
-              <textarea
-                value={notasPersonal}
-                onChange={(e) => setNotasPersonal(e.target.value)}
-                rows={4}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
-                placeholder="Notas sobre el personal de la tienda..."
-                disabled={modoRevision && !modoEdicion}
-              />
-            </div>
-            
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Campañas y Tienda en General
-              </label>
-              <textarea
-                value={notasCampanas}
-                onChange={(e) => setNotasCampanas(e.target.value)}
-                rows={4}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
-                placeholder="Notas sobre campañas y estado general de la tienda..."
-                disabled={modoRevision && !modoEdicion}
-              />
-            </div>
-          </div>
-          
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Conclusiones
-            </label>
-            <textarea
-              value={conclusiones}
-              onChange={(e) => setConclusiones(e.target.value)}
-              rows={4}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
-              placeholder="Conclusiones generales de la auditoría..."
-              disabled={modoRevision && !modoEdicion}
-            />
-          </div>
+        <div className="p-6 text-center">
+          <p className="text-gray-600 mb-4">
+            ¡Evaluación completada! Continúa con las fotos de auditoría.
+          </p>
+          <Button
+            variant="primary"
+            onClick={() => setCurrentStep(3)}
+            className="px-8 py-3 text-lg"
+          >
+            📸 Siguiente: Fotos →
+          </Button>
         </div>
       </Card>
 
-      {/* Checklist de Imágenes */}
-      <Card className="mt-8">
-        <div className="bg-gradient-to-r from-green-500 to-green-600 text-white p-4">
-          <h3 className="text-xl font-bold">📷 Checklist de Imágenes</h3>
-        </div>
-        
-        <div className="p-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {checklistImagenes.map((categoria) => (
-              <div key={categoria} className="border rounded-lg p-4">
-                <label className="block text-sm font-medium text-gray-700 mb-3">
-                  {categoria}
-                </label>
-                {(!modoRevision || modoEdicion) && (
-                  <input
-                    type="file"
-                    accept="image/*"
-                    multiple
-                    onChange={(e) => handleImageUpload(categoria, e.target.files)}
-                    className="mb-3 w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-green-50 file:text-green-700 hover:file:bg-green-100"
-                  />
-                )}
-                {imagenesSubidas[categoria] && imagenesSubidas[categoria].length > 0 && (
-                  <div className="grid grid-cols-2 gap-2">
-                    {imagenesSubidas[categoria].map((src, idx) => (
-                      <img 
-                        key={`${categoria}-img-${idx}-${src.substring(src.length - 10)}`}
-                        src={src}
-                        alt={`${categoria} ${idx + 1}`}
-                        className="w-full h-24 object-cover rounded border shadow-sm hover:shadow-md transition-shadow cursor-pointer"
-                        onClick={() => window.open(src, '_blank')}
-                      />
-                    ))}
-                  </div>
-                )}
-                {(!imagenesSubidas[categoria] || imagenesSubidas[categoria].length === 0) && (
-                  <div className="text-center py-4 text-gray-500 text-sm border-2 border-dashed border-gray-300 rounded">
-                    No hay imágenes subidas
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-      </Card>
-
-      {/* Botón de Finalización */}
+      {/* Botón de Guardar y Ver Resumen */}
       {!modoRevision && (
         <div className="mt-8 text-center">
           <Button 
             onClick={() => setShowResumenModal(true)}
-            variant="primary"
+            variant="secondary"
             disabled={isSaving}
             className="px-8 py-3 text-lg"
           >
-            📋 Ver Resumen y Finalizar Auditoría
+            � Guardar y Ver Resumen
           </Button>
+          <p className="text-sm text-gray-600 mt-2">
+            ⚠️ Continúa con fotos y conclusiones para completar la auditoría
+          </p>
         </div>
       )}
     </div>
@@ -1151,7 +1038,7 @@ const Auditoria = () => {
       <Modal 
         isOpen={showResumenModal} 
         onClose={() => setShowResumenModal(false)}
-        title="Resumen de Auditoría"
+        title="📊 Progreso de Evaluación"
       >
         <div className="space-y-6">
           {/* Resumen General */}
@@ -1202,23 +1089,66 @@ const Auditoria = () => {
             </div>
           </div>
 
-          <div className="flex justify-end gap-4">
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+            <h4 className="font-medium text-blue-800 mb-2">📋 Resumen de Evaluación</h4>
+            
+            {currentStep === 2 ? (
+              <>
+                <p className="text-sm text-blue-700">
+                  Este es un resumen del progreso actual de las preguntas respondidas. 
+                  Para completar la auditoría, continúa con:
+                </p>
+                <ul className="text-sm text-blue-700 mt-2 ml-4">
+                  <li>• 📸 Subir fotos de evidencia</li>
+                  <li>• 📝 Agregar notas y conclusiones</li>
+                </ul>
+              </>
+            ) : (
+              <>
+                <p className="text-sm text-blue-700">
+                  Resumen actual de las preguntas evaluadas. El progreso se guardará automáticamente.
+                </p>
+                <div className="text-sm text-blue-700 mt-2 bg-blue-100 rounded p-2">
+                  💾 Al guardar, regresarás a la pestaña de información para continuar después.
+                </div>
+              </>
+            )}
+          </div>
+
+          <div className="flex justify-between">
             <Button 
               onClick={() => setShowResumenModal(false)}
               variant="secondary"
             >
-              Cerrar
+              Continuar Evaluando
             </Button>
-            <Button 
-              onClick={() => {
-                setShowResumenModal(false);
-                manejarFinalizarAuditoria();
-              }}
-              variant="primary"
-              disabled={isSaving}
-            >
-              {isSaving ? 'Finalizando...' : 'Finalizar Auditoría'}
-            </Button>
+            
+            {/* Botón dinámico según el paso actual */}
+            {currentStep === 2 ? (
+              <Button 
+                onClick={() => {
+                  setShowResumenModal(false);
+                  setCurrentStep(3); // Ir a la sección de fotos
+                }}
+                variant="primary"
+              >
+                📸 Continuar con Fotos
+              </Button>
+            ) : (
+              <Button 
+                onClick={async () => {
+                  setShowResumenModal(false);
+                  // Guardar progreso y redirigir a información
+                  if (auditoriaActual) {
+                    // Aquí podrías agregar lógica para guardar el progreso si es necesario
+                    setCurrentStep(1); // Redirigir a la pestaña información
+                  }
+                }}
+                variant="primary"
+              >
+                💾 Guardar Progreso
+              </Button>
+            )}
           </div>
         </div>
       </Modal>
@@ -1317,6 +1247,20 @@ const Auditoria = () => {
           >
             2. Evaluación
           </Button>
+          <Button 
+            variant={currentStep === 3 ? 'primary' : 'secondary'}
+            onClick={() => setCurrentStep(3)}
+            disabled={!auditoriaActual}
+          >
+            3. Fotos
+          </Button>
+          <Button 
+            variant={currentStep === 4 ? 'primary' : 'secondary'}
+            onClick={() => setCurrentStep(4)}
+            disabled={!auditoriaActual}
+          >
+            4. Notas y Conclusiones
+          </Button>
         </div>
       </div>
 
@@ -1330,6 +1274,143 @@ const Auditoria = () => {
         <>
           {currentStep === 1 && renderFormularioInicial()}
           {currentStep === 2 && renderPreguntas()}
+          {currentStep === 3 && auditoriaActual && (
+            <div className="space-y-6">
+              <div className="flex justify-between items-center">
+                <h2 className="text-2xl font-bold text-gray-800">
+                  📸 Fotos de Auditoría
+                  <span className="ml-2 text-lg font-normal text-gray-600">
+                    (ID: {auditoriaActual.id_auditoria})
+                  </span>
+                </h2>
+              </div>
+              
+              <GestorFotos 
+                idAuditoria={auditoriaActual.id_auditoria}
+                readonly={modoRevision && !modoEdicion}
+              />
+              
+              {/* Navegación al siguiente paso */}
+              {!modoRevision && (
+                <Card className="mt-8">
+                  <div className="p-6 text-center">
+                    <p className="text-gray-600 mb-4">
+                      ¡Fotos completadas! Continúa con las notas y conclusiones.
+                    </p>
+                    <Button
+                      variant="primary"
+                      onClick={() => setCurrentStep(4)}
+                      className="px-8 py-3 text-lg"
+                    >
+                      📝 Siguiente: Notas y Conclusiones →
+                    </Button>
+                  </div>
+                </Card>
+              )}
+            </div>
+          )}
+          {currentStep === 4 && auditoriaActual && (
+            <div className="space-y-6">
+              <div className="flex justify-between items-center">
+                <h2 className="text-2xl font-bold text-gray-800">
+                  📝 Notas y Conclusiones
+                  <span className="ml-2 text-lg font-normal text-gray-600">
+                    (ID: {auditoriaActual.id_auditoria})
+                  </span>
+                </h2>
+              </div>
+              
+              {/* Sección de Notas y Conclusiones */}
+              <Card>
+                <div className="bg-gradient-to-r from-purple-500 to-purple-600 text-white p-4">
+                  <h3 className="text-xl font-bold">📋 Completa la auditoría</h3>
+                </div>
+                
+                <div className="p-6 space-y-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Notas del Personal
+                      </label>
+                      <textarea
+                        value={notasPersonal}
+                        onChange={(e) => setNotasPersonal(e.target.value)}
+                        rows={4}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
+                        placeholder="Notas sobre el personal de la tienda..."
+                        disabled={modoRevision && !modoEdicion}
+                      />
+                    </div>
+                    
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Campañas y Tienda en General
+                      </label>
+                      <textarea
+                        value={notasCampanas}
+                        onChange={(e) => setNotasCampanas(e.target.value)}
+                        rows={4}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
+                        placeholder="Notas sobre campañas y estado general de la tienda..."
+                        disabled={modoRevision && !modoEdicion}
+                      />
+                    </div>
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Conclusiones Finales
+                    </label>
+                    <textarea
+                      value={conclusiones}
+                      onChange={(e) => setConclusiones(e.target.value)}
+                      rows={4}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
+                      placeholder="Conclusiones generales de la auditoría..."
+                      disabled={modoRevision && !modoEdicion}
+                    />
+                  </div>
+                </div>
+              </Card>
+
+              {/* Botones finales */}
+              <Card>
+                <div className="p-6">
+                  <div className="flex flex-col sm:flex-row gap-4 justify-center">
+                    <Button 
+                      onClick={() => setShowResumenModal(true)}
+                      variant="secondary"
+                      className="px-6 py-3 text-lg"
+                    >
+                      📋 Ver Resumen
+                    </Button>
+                    
+                    {!modoRevision && (
+                      <Button 
+                        onClick={manejarFinalizarAuditoria}
+                        variant="primary"
+                        disabled={isSaving}
+                        className="px-6 py-3 text-lg"
+                      >
+                        {isSaving ? 'Finalizando...' : '✅ Finalizar Auditoría'}
+                      </Button>
+                    )}
+                    
+                    {modoRevision && modoEdicion && cambiosPendientes && (
+                      <Button 
+                        onClick={actualizarAuditoria}
+                        variant="primary"
+                        disabled={actualizandoAuditoria}
+                        className="px-6 py-3 text-lg"
+                      >
+                        {actualizandoAuditoria ? 'Actualizando...' : '💾 Guardar Cambios'}
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </Card>
+            </div>
+          )}
         </>
       )}
 
