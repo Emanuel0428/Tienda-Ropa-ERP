@@ -10,6 +10,8 @@ import SalesSummary from './pages/SalesSummary';
 import Goals from './pages/Goals';
 import Inventory from './pages/Inventory';
 import Auditoria from './pages/Auditoria';
+import AuditoriaHistorial from './pages/AuditoriaHistorial';
+import AuditoriaEstadisticas from './pages/AuditoriaEstadisticas';
 import PreguntasMaestras from './pages/PreguntasMaestras';
 import Auth from './pages/Auth';
 import Profile from './pages/Profile';
@@ -78,6 +80,8 @@ function App() {
             <Route path="/users" element={<Users />} />
             <Route path="/statistics" element={<Statistics />} />
             <Route path="/auditoria" element={<Auditoria />} />
+            <Route path="/auditoria/historial" element={<AuditoriaHistorial />} />
+            <Route path="/auditoria/estadisticas" element={<AuditoriaEstadisticas />} />
             <Route path="/preguntas-maestras" element={<PreguntasMaestras />} />
             <Route path="/analytics" element={<Analytics />} />
             <Route path="/incidents" element={<Incidents />} />
