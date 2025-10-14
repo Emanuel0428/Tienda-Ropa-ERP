@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
+import { Modal } from '../components/ui/Modal';
 import { supabase } from '../supabaseClient';
 import { 
   Calendar,
@@ -12,22 +13,29 @@ import {
   Eye,
   Clock,
   CheckCircle,
-  AlertCircle
+  AlertCircle,
+  Trash2,
+  X
 } from 'lucide-react';
 
 interface AuditoriaHistorial {
   id_auditoria: number;
-  nombre: string;
-  ubicacion: string;
-  fecha_creacion: string;
-  fecha_finalizacion: string | null;
+  id_auditoria_custom?: string;
+  id_tienda?: number;
+  id_auditor?: string;
+  fecha: string;
+  created_at: string;
+  updated_at: string;
   estado: 'en_progreso' | 'completada' | 'pendiente';
-  usuario_id: number;
   quienes_reciben: string;
-  observaciones: string;
-  puntuacion_total?: number;
+  observaciones?: string;
+  calificacion_total?: number;
+  notas_personal?: string;
+  notas_campanas?: string;
+  notas_conclusiones?: string;
   total_preguntas?: number;
   preguntas_aprobadas?: number;
+  tiendas?: any; // Tipo flexible para manejar el JOIN
 }
 
 const AuditoriaHistorial = () => {
@@ -36,6 +44,9 @@ const AuditoriaHistorial = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filtroEstado, setFiltroEstado] = useState<'todas' | 'en_progreso' | 'completada'>('todas');
+  const [auditoriaParaEliminar, setAuditoriaParaEliminar] = useState<AuditoriaHistorial | null>(null);
+  const [confirmacionTexto, setConfirmacionTexto] = useState('');
+  const [eliminando, setEliminando] = useState(false);
 
   useEffect(() => {
     cargarHistorialAuditorias();
@@ -44,49 +55,114 @@ const AuditoriaHistorial = () => {
   const cargarHistorialAuditorias = async () => {
     try {
       setLoading(true);
+      setError(null);
       
-      // Obtener auditorías con resumen de preguntas
+      console.log('🔍 Cargando historial de auditorías...');
+      
+      // Primero hacer una prueba simple de conexión
+      const { data: testData, error: testError } = await supabase
+        .from('auditorias')
+        .select('count', { count: 'exact', head: true });
+        
+      if (testError) {
+        console.error('❌ Error de conexión:', testError);
+        throw new Error(`Error de conexión: ${testError.message}`);
+      }
+      
+      console.log('✅ Conexión exitosa, auditorías encontradas:', testData);
+      
+      // Obtener auditorías con información de tiendas
       const { data: auditoriasData, error: auditoriaError } = await supabase
         .from('auditorias')
         .select(`
           id_auditoria,
-          nombre,
-          ubicacion,
-          fecha_creacion,
-          fecha_finalizacion,
+          id_auditoria_custom,
+          id_tienda,
+          id_auditor,
+          fecha,
+          created_at,
+          updated_at,
           estado,
-          usuario_id,
           quienes_reciben,
           observaciones,
-          puntuacion_total
+          calificacion_total,
+          notas_personal,
+          notas_campanas,
+          notas_conclusiones,
+          tiendas (
+            nombre,
+            direccion,
+            ciudad
+          )
         `)
-        .order('fecha_creacion', { ascending: false });
+        .order('created_at', { ascending: false })
+        .limit(50); // Limitar a 50 para evitar problemas de rendimiento
 
-      if (auditoriaError) throw auditoriaError;
+      if (auditoriaError) {
+        console.error('❌ Error en la consulta de auditorías:', auditoriaError);
+        
+        // Si el error es por tabla no encontrada o problemas de permisos
+        if (auditoriaError.code === 'PGRST116' || auditoriaError.code === '42P01') {
+          throw new Error('La tabla de auditorías no existe o no tienes permisos para accederla');
+        }
+        
+        throw new Error(auditoriaError.message || 'Error desconocido al obtener auditorías');
+      }
+      
+      console.log('✅ Auditorías obtenidas:', auditoriasData?.length || 0);
+      
+      // Si no hay auditorías, no es un error, simplemente mostrar vacío
+      if (!auditoriasData || auditoriasData.length === 0) {
+        console.log('ℹ️ No hay auditorías para mostrar');
+        setAuditorias([]);
+        return;
+      }
 
       // Para cada auditoría, obtener estadísticas de preguntas
       const auditoriasConStats = await Promise.all(
         (auditoriasData || []).map(async (auditoria) => {
-          const { data: statsData } = await supabase
-            .from('auditoria_preguntas')
-            .select('respuesta')
-            .eq('auditoria_id', auditoria.id_auditoria);
+          try {
+            const { data: statsData, error: statsError } = await supabase
+              .from('auditoria_preguntas')
+              .select('respuesta')
+              .eq('id_auditoria', auditoria.id_auditoria);
 
-          const totalPreguntas = statsData?.length || 0;
-          const preguntasAprobadas = statsData?.filter(p => p.respuesta === 'si').length || 0;
+            if (statsError) {
+              console.warn('⚠️ Error obteniendo estadísticas para auditoría', auditoria.id_auditoria, statsError);
+            }
 
-          return {
-            ...auditoria,
-            total_preguntas: totalPreguntas,
-            preguntas_aprobadas: preguntasAprobadas
-          };
+            const totalPreguntas = statsData?.length || 0;
+            const preguntasAprobadas = statsData?.filter(p => p.respuesta === 'si').length || 0;
+
+            return {
+              ...auditoria,
+              total_preguntas: totalPreguntas,
+              preguntas_aprobadas: preguntasAprobadas
+            } as AuditoriaHistorial;
+          } catch (err) {
+            console.warn('⚠️ Error procesando estadísticas para auditoría', auditoria.id_auditoria, err);
+            return {
+              ...auditoria,
+              total_preguntas: 0,
+              preguntas_aprobadas: 0
+            };
+          }
         })
       );
 
+      console.log('✅ Auditorías con estadísticas:', auditoriasConStats);
       setAuditorias(auditoriasConStats);
     } catch (error) {
-      console.error('Error cargando historial:', error);
-      setError('Error al cargar el historial de auditorías');
+      console.error('❌ Error cargando historial:', error);
+      let errorMessage = 'Error al cargar el historial de auditorías';
+      
+      if (error instanceof Error) {
+        errorMessage += ': ' + error.message;
+      } else if (typeof error === 'object' && error && 'message' in error) {
+        errorMessage += ': ' + (error as any).message;
+      }
+      
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -136,6 +212,74 @@ const AuditoriaHistorial = () => {
     navigate(`/auditoria?id=${id}&modo=revision`);
   };
 
+  const handleEliminarAuditoria = async () => {
+    if (!auditoriaParaEliminar) return;
+    
+    const textoEsperado = `ELIMINAR ${auditoriaParaEliminar.id_auditoria}`;
+    if (confirmacionTexto !== textoEsperado) {
+      setError('Texto de confirmación incorrecto');
+      return;
+    }
+
+    try {
+      setEliminando(true);
+      
+      // Primero eliminar las preguntas relacionadas
+      const { error: preguntasError } = await supabase
+        .from('auditoria_preguntas')
+        .delete()
+        .eq('id_auditoria', auditoriaParaEliminar.id_auditoria);
+
+      if (preguntasError) {
+        console.warn('Error eliminando preguntas:', preguntasError);
+      }
+
+      // Eliminar las fotos relacionadas
+      const { error: fotosError } = await supabase
+        .from('auditoria_fotos')
+        .delete()
+        .eq('id_auditoria', auditoriaParaEliminar.id_auditoria);
+
+      if (fotosError) {
+        console.warn('Error eliminando fotos:', fotosError);
+      }
+
+      // Finalmente eliminar la auditoría
+      const { error: auditoriaError } = await supabase
+        .from('auditorias')
+        .delete()
+        .eq('id_auditoria', auditoriaParaEliminar.id_auditoria);
+
+      if (auditoriaError) throw auditoriaError;
+
+      // Actualizar la lista local
+      setAuditorias(prev => prev.filter(a => a.id_auditoria !== auditoriaParaEliminar.id_auditoria));
+      
+      // Cerrar modal
+      setAuditoriaParaEliminar(null);
+      setConfirmacionTexto('');
+      setError(null);
+      
+    } catch (error) {
+      console.error('Error eliminando auditoría:', error);
+      setError('Error al eliminar la auditoría');
+    } finally {
+      setEliminando(false);
+    }
+  };
+
+  const abrirModalEliminar = (auditoria: AuditoriaHistorial) => {
+    setAuditoriaParaEliminar(auditoria);
+    setConfirmacionTexto('');
+    setError(null);
+  };
+
+  const cerrarModalEliminar = () => {
+    setAuditoriaParaEliminar(null);
+    setConfirmacionTexto('');
+    setError(null);
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 py-6 px-6">
@@ -150,7 +294,7 @@ const AuditoriaHistorial = () => {
   return (
     <div className="min-h-screen bg-gray-50 py-6 px-6">
       {/* Header */}
-      <div className="mb-8">
+      <div className="mb-8 mt-8">
         <div className="flex justify-between items-center">
           <div>
             <h1 className="text-3xl font-bold text-gray-800">📋 Historial de Auditorías</h1>
@@ -246,7 +390,7 @@ const AuditoriaHistorial = () => {
                 <div className="flex justify-between items-start mb-4">
                   <div className="flex-1">
                     <h3 className="font-bold text-lg text-gray-800 mb-1">
-                      {auditoria.nombre}
+                      Auditoría {auditoria.id_auditoria_custom || `#${auditoria.id_auditoria}`}
                     </h3>
                     {getEstadoBadge(auditoria.estado)}
                   </div>
@@ -256,22 +400,22 @@ const AuditoriaHistorial = () => {
                 <div className="space-y-3 mb-4">
                   <div className="flex items-center text-sm text-gray-600">
                     <MapPin className="w-4 h-4 mr-2" />
-                    {auditoria.ubicacion}
+                    {auditoria.tiendas?.nombre || `Tienda ${auditoria.id_tienda}` || 'Sin asignar'}
                   </div>
                   
                   <div className="flex items-center text-sm text-gray-600">
                     <Calendar className="w-4 h-4 mr-2" />
-                    {new Date(auditoria.fecha_creacion).toLocaleDateString('es-ES', {
+                    {new Date(auditoria.fecha || auditoria.created_at).toLocaleDateString('es-ES', {
                       year: 'numeric',
                       month: 'short',
                       day: 'numeric'
                     })}
                   </div>
 
-                  {auditoria.fecha_finalizacion && (
+                  {auditoria.estado === 'completada' && auditoria.updated_at && (
                     <div className="flex items-center text-sm text-green-600">
                       <CheckCircle className="w-4 h-4 mr-2" />
-                      Finalizada: {new Date(auditoria.fecha_finalizacion).toLocaleDateString('es-ES')}
+                      Finalizada: {new Date(auditoria.updated_at).toLocaleDateString('es-ES')}
                     </div>
                   )}
 
@@ -282,6 +426,27 @@ const AuditoriaHistorial = () => {
                 </div>
 
                 {/* Estadísticas */}
+                {/* Mostrar calificación si está disponible */}
+                {auditoria.calificacion_total !== null && auditoria.calificacion_total !== undefined && (
+                  <div className="bg-white rounded-lg p-3 mb-4 border">
+                    <div className="flex justify-between items-center mb-2">
+                      <span className="text-sm font-medium text-gray-700">Calificación</span>
+                      <span className="text-sm font-bold text-gray-800">
+                        {Math.round(auditoria.calificacion_total)}%
+                      </span>
+                    </div>
+                    <div className="w-full bg-gray-200 rounded-full h-2">
+                      <div 
+                        className="bg-blue-500 h-2 rounded-full transition-all"
+                        style={{
+                          width: `${Math.min(Math.max(auditoria.calificacion_total, 0), 100)}%`
+                        }}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Mostrar progreso de preguntas si están disponibles */}
                 {auditoria.total_preguntas && auditoria.total_preguntas > 0 && (
                   <div className="bg-white rounded-lg p-3 mb-4 border">
                     <div className="flex justify-between items-center mb-2">
@@ -292,7 +457,7 @@ const AuditoriaHistorial = () => {
                     </div>
                     <div className="w-full bg-gray-200 rounded-full h-2">
                       <div 
-                        className="bg-blue-500 h-2 rounded-full transition-all"
+                        className="bg-green-500 h-2 rounded-full transition-all"
                         style={{
                           width: `${calcularPorcentaje(auditoria.preguntas_aprobadas, auditoria.total_preguntas)}%`
                         }}
@@ -333,11 +498,95 @@ const AuditoriaHistorial = () => {
                       Editar
                     </Button>
                   )}
+                  <Button
+                    onClick={() => abrirModalEliminar(auditoria)}
+                    variant="danger"
+                    className="px-3 py-2 flex items-center justify-center"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </Button>
                 </div>
               </div>
             </Card>
           ))}
         </div>
+      )}
+
+      {/* Modal de confirmación de eliminación */}
+      {auditoriaParaEliminar && (
+        <Modal
+          isOpen={true}
+          onClose={cerrarModalEliminar}
+          title="⚠️ Confirmar Eliminación"
+        >
+          <div className="space-y-4">
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+              <p className="text-red-800 font-medium mb-2">
+                ¿Estás seguro de que deseas eliminar esta auditoría?
+              </p>
+              <div className="text-sm text-red-700">
+                <p><strong>ID:</strong> {auditoriaParaEliminar.id_auditoria}</p>
+                <p><strong>Tienda:</strong> {auditoriaParaEliminar.tiendas?.nombre || `Tienda ${auditoriaParaEliminar.id_tienda}`}</p>
+                <p><strong>Fecha:</strong> {new Date(auditoriaParaEliminar.created_at).toLocaleDateString('es-ES')}</p>
+              </div>
+            </div>
+
+            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+              <p className="text-yellow-800 text-sm">
+                <strong>⚠️ Advertencia:</strong> Esta acción no se puede deshacer. Se eliminarán también todas las preguntas y fotos asociadas.
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Para confirmar, escribe: <span className="font-bold text-red-600">ELIMINAR {auditoriaParaEliminar.id_auditoria}</span>
+              </label>
+              <input
+                type="text"
+                value={confirmacionTexto}
+                onChange={(e) => setConfirmacionTexto(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500"
+                placeholder={`ELIMINAR ${auditoriaParaEliminar.id_auditoria}`}
+              />
+            </div>
+
+            {error && (
+              <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded text-sm">
+                {error}
+              </div>
+            )}
+
+            <div className="flex gap-3 pt-4">
+              <Button
+                onClick={cerrarModalEliminar}
+                variant="secondary"
+                className="flex-1"
+                disabled={eliminando}
+              >
+                <X className="w-4 h-4 mr-2" />
+                Cancelar
+              </Button>
+              <Button
+                onClick={handleEliminarAuditoria}
+                variant="danger"
+                className="flex-1"
+                disabled={eliminando || confirmacionTexto !== `ELIMINAR ${auditoriaParaEliminar.id_auditoria}`}
+              >
+                {eliminando ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    Eliminando...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-4 h-4 mr-2" />
+                    Confirmar Eliminación
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        </Modal>
       )}
     </div>
   );

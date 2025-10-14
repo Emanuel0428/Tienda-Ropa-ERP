@@ -54,8 +54,8 @@ const AuditoriaEstadisticas = () => {
 
       // 2. Calcular promedios de puntuación
       const puntuaciones = auditorias
-        ?.filter(a => a.puntuacion_total !== null)
-        .map(a => a.puntuacion_total) || [];
+        ?.filter(a => a.calificacion_total !== null)
+        .map(a => a.calificacion_total) || [];
       
       const promedioGeneral = puntuaciones.length > 0 
         ? puntuaciones.reduce((sum, p) => sum + p, 0) / puntuaciones.length 
@@ -85,7 +85,7 @@ const AuditoriaEstadisticas = () => {
 
       // 5. Auditoría más reciente
       const auditoriaReciente = auditorias
-        ?.sort((a, b) => new Date(b.fecha_creacion).getTime() - new Date(a.fecha_creacion).getTime())[0] || null;
+        ?.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0] || null;
 
       setEstadisticas({
         totalAuditorias,
@@ -120,7 +120,7 @@ const AuditoriaEstadisticas = () => {
       const año = fecha.getFullYear();
       
       const cantidad = auditorias.filter(a => {
-        const fechaAuditoria = new Date(a.fecha_creacion);
+        const fechaAuditoria = new Date(a.created_at);
         return fechaAuditoria.getMonth() === fecha.getMonth() && 
                fechaAuditoria.getFullYear() === fecha.getFullYear();
       }).length;
@@ -185,7 +185,7 @@ const AuditoriaEstadisticas = () => {
   return (
     <div className="min-h-screen bg-gray-50 py-6 px-6">
       {/* Header */}
-      <div className="mb-8">
+      <div className="mb-8 mt-8">
         <h1 className="text-3xl font-bold text-gray-800">📊 Estadísticas de Auditorías</h1>
         <p className="text-gray-600 mt-2">
           Análisis detallado del rendimiento y progreso de las auditorías
@@ -360,11 +360,13 @@ const AuditoriaEstadisticas = () => {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="flex items-center gap-2">
                 <MapPin className="w-4 h-4 text-gray-500" />
-                <span className="font-medium">{estadisticas.auditoriaReciente.nombre}</span>
+                <span className="font-medium">
+                  Auditoría {estadisticas.auditoriaReciente.id_auditoria_custom || `#${estadisticas.auditoriaReciente.id_auditoria}`}
+                </span>
               </div>
               <div className="flex items-center gap-2">
                 <Calendar className="w-4 h-4 text-gray-500" />
-                <span>{new Date(estadisticas.auditoriaReciente.fecha_creacion).toLocaleDateString('es-ES')}</span>
+                <span>{new Date(estadisticas.auditoriaReciente.created_at).toLocaleDateString('es-ES')}</span>
               </div>
               <div className="flex items-center gap-2">
                 <Users className="w-4 h-4 text-gray-500" />
