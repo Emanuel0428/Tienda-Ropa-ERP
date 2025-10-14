@@ -47,6 +47,9 @@ const AuditoriaHistorial = () => {
   const [auditoriaParaEliminar, setAuditoriaParaEliminar] = useState<AuditoriaHistorial | null>(null);
   const [confirmacionTexto, setConfirmacionTexto] = useState('');
   const [eliminando, setEliminando] = useState(false);
+  const [auditoriaResumen, setAuditoriaResumen] = useState<any>(null);
+  const [showResumenModal, setShowResumenModal] = useState(false);
+  const [loadingResumen, setLoadingResumen] = useState(false);
 
   useEffect(() => {
     cargarHistorialAuditorias();
@@ -124,7 +127,7 @@ const AuditoriaHistorial = () => {
           try {
             const { data: statsData, error: statsError } = await supabase
               .from('auditoria_preguntas')
-              .select('respuesta')
+              .select('valor_respuesta')
               .eq('id_auditoria', auditoria.id_auditoria);
 
             if (statsError) {
@@ -132,7 +135,7 @@ const AuditoriaHistorial = () => {
             }
 
             const totalPreguntas = statsData?.length || 0;
-            const preguntasAprobadas = statsData?.filter(p => p.respuesta === 'si').length || 0;
+            const preguntasAprobadas = statsData?.filter(p => p.valor_respuesta === 'si').length || 0;
 
             return {
               ...auditoria,
@@ -205,11 +208,54 @@ const AuditoriaHistorial = () => {
   };
 
   const handleEditarAuditoria = (id: number) => {
-    navigate(`/auditoria?id=${id}`);
+    navigate(`/auditoria?id=${id}&modo=edicion&step=2`);
   };
 
-  const handleVerAuditoria = (id: number) => {
-    navigate(`/auditoria?id=${id}&modo=revision`);
+  const cargarResumenAuditoria = async (id: number) => {
+    // Cargar información básica de la auditoría con el nombre de la tienda
+    const { data: auditoriaData, error: auditoriaError } = await supabase
+      .from('auditorias')
+      .select(`
+        *,
+        tiendas!inner(nombre)
+      `)
+      .eq('id_auditoria', id)
+      .single();
+
+    if (auditoriaError) throw auditoriaError;
+
+    // Usar la misma lógica simple que ya existe en el historial
+    const { data: statsData } = await supabase
+      .from('auditoria_preguntas')
+      .select('respuestas(respuesta)')
+      .eq('id_auditoria', id);
+
+    const totalPreguntas = statsData?.length || 0;
+    const preguntasAprobadas = statsData?.filter(p => p.respuestas[0]?.respuesta === true).length || 0;
+
+    return {
+      auditoria: auditoriaData,
+      totalPreguntas,
+      preguntasAprobadas,
+      preguntasReprobadas: totalPreguntas - preguntasAprobadas,
+      calificacionTotal: auditoriaData.calificacion_total || 0,
+      categorias: [] // Simplificado - no mostrar detalle por categorías
+    };
+  };
+
+  const handleVerAuditoria = async (id: number) => {
+    setLoadingResumen(true);
+    try {
+      // Cargar datos de la auditoría y calcular resumen
+      const resumen = await cargarResumenAuditoria(id);
+      setAuditoriaResumen(resumen);
+      setShowResumenModal(true);
+    } catch (error) {
+      console.error('Error cargando resumen:', error);
+      setError('Error al cargar el resumen de la auditoría');
+    } finally {
+      setLoadingResumen(false);
+    }
   };
 
   const handleEliminarAuditoria = async () => {
@@ -484,9 +530,19 @@ const AuditoriaHistorial = () => {
                     onClick={() => handleVerAuditoria(auditoria.id_auditoria)}
                     variant="secondary"
                     className="flex-1 flex items-center justify-center gap-2"
+                    disabled={loadingResumen}
                   >
-                    <Eye className="w-4 h-4" />
-                    Ver
+                    {loadingResumen ? (
+                      <>
+                        <div className="w-4 h-4 border-2 border-gray-300 border-t-gray-600 rounded-full animate-spin"></div>
+                        Cargando...
+                      </>
+                    ) : (
+                      <>
+                        <Eye className="w-4 h-4" />
+                        Ver
+                      </>
+                    )}
                   </Button>
                   {auditoria.estado !== 'completada' && (
                     <Button
@@ -583,6 +639,118 @@ const AuditoriaHistorial = () => {
                     Confirmar Eliminación
                   </>
                 )}
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* Modal de Resumen */}
+      {showResumenModal && auditoriaResumen && (
+        <Modal 
+          isOpen={showResumenModal} 
+          onClose={() => setShowResumenModal(false)}
+          title="📊 Resumen de Auditoría"
+          size="lg"
+        >
+          <div className="space-y-6">
+            {/* Información básica de la auditoría */}
+            <div className="bg-blue-50 rounded-lg p-4">
+              <h3 className="text-lg font-bold text-blue-800 mb-3">
+                Auditoría #{auditoriaResumen.auditoria.id_auditoria}
+              </h3>
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <p><strong>Tienda:</strong> {auditoriaResumen.auditoria.tiendas.nombre}</p>
+                  <p><strong>Fecha:</strong> {new Date(auditoriaResumen.auditoria.fecha).toLocaleDateString()}</p>
+                </div>
+                <div>
+                  <p><strong>Estado:</strong> 
+                    <Badge 
+                      variant={
+                        auditoriaResumen.auditoria.estado === 'completada' ? 'success' :
+                        auditoriaResumen.auditoria.estado === 'revisada' ? 'info' : 'warning'
+                      }
+                    >
+                      {auditoriaResumen.auditoria.estado.toUpperCase()}
+                    </Badge>
+                  </p>
+                  <p><strong>Calificación:</strong> 
+                    <span className={`font-bold ml-2 ${
+                      auditoriaResumen.calificacionTotal >= 80 ? 'text-green-600' :
+                      auditoriaResumen.calificacionTotal >= 60 ? 'text-yellow-600' : 'text-red-600'
+                    }`}>
+                      {auditoriaResumen.calificacionTotal}%
+                    </span>
+                  </p>
+                </div>
+              </div>
+              {auditoriaResumen.auditoria.quienes_reciben && (
+                <p className="mt-2"><strong>Reciben:</strong> {auditoriaResumen.auditoria.quienes_reciben}</p>
+              )}
+            </div>
+
+            {/* Resumen General */}
+            <div className="bg-gray-50 rounded-lg p-6">
+              <h3 className="text-lg font-bold text-gray-800 mb-4">Resumen General</h3>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
+                <div>
+                  <p className="text-2xl font-bold text-blue-600">{auditoriaResumen.totalPreguntas}</p>
+                  <p className="text-sm text-gray-600">Total Preguntas</p>
+                </div>
+                <div>
+                  <p className="text-2xl font-bold text-green-600">{auditoriaResumen.preguntasAprobadas}</p>
+                  <p className="text-sm text-gray-600">Aprobadas</p>
+                </div>
+                <div>
+                  <p className="text-2xl font-bold text-red-600">{auditoriaResumen.preguntasReprobadas}</p>
+                  <p className="text-sm text-gray-600">Reprobadas</p>
+                </div>
+                <div>
+                  <p className={`text-3xl font-bold ${
+                    auditoriaResumen.calificacionTotal >= 80 ? 'text-green-600' :
+                    auditoriaResumen.calificacionTotal >= 60 ? 'text-yellow-600' : 'text-red-600'
+                  }`}>
+                    {auditoriaResumen.calificacionTotal}%
+                  </p>
+                  <p className="text-sm text-gray-600">Calificación Final</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Información adicional */}
+            <div className="bg-blue-50 rounded-lg p-4">
+              <h4 className="font-medium text-blue-800 mb-2">💡 Información adicional:</h4>
+              <p className="text-sm text-blue-700">
+                Para ver el detalle completo por categorías y poder hacer modificaciones, 
+                presiona "Editar Auditoría" para acceder a la vista completa.
+              </p>
+            </div>
+
+            {/* Observaciones y notas si existen */}
+            {auditoriaResumen.auditoria.observaciones && (
+              <div className="bg-yellow-50 rounded-lg p-4">
+                <h4 className="font-medium text-yellow-800 mb-2">Observaciones:</h4>
+                <p className="text-sm text-yellow-700">{auditoriaResumen.auditoria.observaciones}</p>
+              </div>
+            )}
+
+            <div className="flex justify-between">
+              <Button 
+                onClick={() => setShowResumenModal(false)}
+                variant="secondary"
+              >
+                Cerrar
+              </Button>
+              
+              <Button 
+                onClick={() => {
+                  setShowResumenModal(false);
+                  handleEditarAuditoria(auditoriaResumen.auditoria.id_auditoria);
+                }}
+                variant="primary"
+              >
+                ✏️ Editar Auditoría
               </Button>
             </div>
           </div>

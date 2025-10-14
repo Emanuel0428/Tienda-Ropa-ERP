@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Modal } from '../components/ui/Modal';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
@@ -11,6 +11,7 @@ import GestorFotos from '../components/GestorFotos';
 
 const Auditoria = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   
   const {
     // Estados principales
@@ -77,6 +78,10 @@ const Auditoria = () => {
   const [notasCampanas, setNotasCampanas] = useState('');
   const [conclusiones, setConclusiones] = useState('');
 
+  // Estados para modal de confirmación de finalizar
+  const [showConfirmFinalizarModal, setShowConfirmFinalizarModal] = useState(false);
+  const [preguntasSinResponder, setPreguntasSinResponder] = useState<Array<{categoria: string, subcategoria: string, pregunta: string, id_auditoria_pregunta: number}>>([]);
+
   // Estados para edición de preguntas
   const [modoEdicionPreguntas, setModoEdicionPreguntas] = useState<{[key: number]: boolean}>({});
   const [mostrarFormularioNuevaPregunta, setMostrarFormularioNuevaPregunta] = useState<{[key: number]: boolean}>({});
@@ -90,6 +95,47 @@ const Auditoria = () => {
   useEffect(() => {
     cargarTiendasDisponibles();
   }, []);
+
+  // Manejar parámetros URL para cargar auditoría específica
+  useEffect(() => {
+    const auditoriaId = searchParams.get('id');
+    const modo = searchParams.get('modo');
+    const step = searchParams.get('step');
+    
+    if (auditoriaId) {
+      const id = parseInt(auditoriaId);
+      console.log('🔍 Cargando auditoría desde historial:', id, 'modo:', modo, 'step:', step);
+      
+      // Manejar diferentes modos
+      if (modo === 'revision') {
+        setModoRevision(true);
+        setModoEdicion(false);
+      } else if (modo === 'resumen') {
+        // Cargar auditoría y mostrar resumen directamente
+        cargarAuditoriaExistente(id).then(() => {
+          setShowResumenModal(true);
+        });
+        return; // No continuar con el resto de la lógica
+      } else if (modo === 'edicion') {
+        setModoRevision(false);
+        setModoEdicion(true);
+        // Si viene con step, establecer el step específico
+        if (step) {
+          const stepNumber = parseInt(step);
+          if (stepNumber >= 1 && stepNumber <= 4) {
+            setCurrentStep(stepNumber);
+          }
+        }
+      } else {
+        setModoRevision(false);
+      }
+      
+      // Cargar la auditoría existente (excepto para modo resumen que ya se maneja arriba)
+      if (modo !== 'resumen') {
+        cargarAuditoriaExistente(id);
+      }
+    }
+  }, [searchParams.get('id'), searchParams.get('modo'), searchParams.get('step')]);
 
   const cargarTiendasDisponibles = async () => {
     setCargandoTiendas(true);
@@ -451,6 +497,85 @@ const Auditoria = () => {
     }
   };
 
+  // Función para finalizar auditoría con validación de preguntas pendientes
+  const manejarFinalizarAuditoriaConValidacion = async () => {
+    if (!auditoriaActual) return;
+
+    // Verificar preguntas sin responder
+    const preguntasSinResponder = [];
+    
+    for (const categoria of categorias) {
+      for (const subcategoria of categoria.subcategorias) {
+        for (const pregunta of subcategoria.preguntas) {
+          const respuesta = respuestas.get(pregunta.id_auditoria_pregunta);
+          if (!respuesta || respuesta.respuesta === null || respuesta.respuesta === undefined) {
+            preguntasSinResponder.push({
+              categoria: categoria.nombre,
+              subcategoria: subcategoria.nombre,
+              pregunta: pregunta.texto_pregunta,
+              id_auditoria_pregunta: pregunta.id_auditoria_pregunta
+            });
+          }
+        }
+      }
+    }
+
+    // Si hay preguntas sin responder, mostrar modal de confirmación
+    if (preguntasSinResponder.length > 0) {
+      setPreguntasSinResponder(preguntasSinResponder);
+      setShowConfirmFinalizarModal(true);
+      return; // Esperar respuesta del usuario en el modal
+    }
+
+    // Proceder con la finalización (no hay preguntas pendientes)
+    await manejarFinalizarAuditoria();
+  };
+
+  // Confirmar finalización con preguntas pendientes
+  const confirmarFinalizacionConPendientes = async () => {
+    setShowConfirmFinalizarModal(false);
+    setPreguntasSinResponder([]);
+    await manejarFinalizarAuditoria();
+  };
+
+  // Cancelar finalización y cerrar modal
+  const cancelarFinalizacion = () => {
+    setShowConfirmFinalizarModal(false);
+    setPreguntasSinResponder([]);
+  };
+
+  // Navegar a una pregunta específica
+  const navegarAPregunta = (id_auditoria_pregunta: number) => {
+    // Cerrar el modal
+    setShowConfirmFinalizarModal(false);
+    setPreguntasSinResponder([]);
+    
+    // Ir al step de evaluación si no estamos ahí
+    if (currentStep !== 2) {
+      setCurrentStep(2);
+    }
+    
+    // Usar setTimeout para asegurar que el DOM se haya actualizado
+    setTimeout(() => {
+      // Buscar el elemento con el ID de la pregunta
+      const preguntaElement = document.querySelector(`[data-pregunta-id="${id_auditoria_pregunta}"]`);
+      if (preguntaElement) {
+        // Hacer scroll hasta el elemento con un offset para mejor visibilidad
+        preguntaElement.scrollIntoView({ 
+          behavior: 'smooth', 
+          block: 'center',
+          inline: 'nearest'
+        });
+        
+        // Resaltar temporalmente la pregunta
+        preguntaElement.classList.add('ring-4', 'ring-yellow-300', 'ring-opacity-75');
+        setTimeout(() => {
+          preguntaElement.classList.remove('ring-4', 'ring-yellow-300', 'ring-opacity-75');
+        }, 3000);
+      }
+    }, 100);
+  };
+
   // Renderizar formulario inicial
   const renderFormularioInicial = () => (
     <Card className="max-w-2xl mx-auto">
@@ -683,6 +808,18 @@ const Auditoria = () => {
             Ver Resumen
           </Button>
           
+          {/* Botón Finalizar Auditoría - visible en edición y revisión */}
+          {(modoRevision || auditoriaActual) && (
+            <Button 
+              onClick={manejarFinalizarAuditoriaConValidacion}
+              variant="primary"
+              disabled={isSaving}
+              className="bg-green-600 hover:bg-green-700"
+            >
+              {isSaving ? 'Finalizando...' : '✅ Finalizar Auditoría'}
+            </Button>
+          )}
+          
           {/* Botones según el modo */}
           {modoRevision ? (
             <>
@@ -785,7 +922,10 @@ const Auditoria = () => {
                         ? `auditoria-${pregunta.id_auditoria_pregunta}` 
                         : `temp-${subcategoria.id}-${pregunta.id_pregunta || 'var'}-${preguntaIdx}-${pregunta.texto_pregunta.slice(0, 10)}`
                     }>
-                      <div className="flex items-center justify-between py-2 px-3 bg-white rounded border hover:bg-gray-50">
+                      <div 
+                        className="flex items-center justify-between py-2 px-3 bg-white rounded border hover:bg-gray-50 transition-all duration-300"
+                        data-pregunta-id={pregunta.id_auditoria_pregunta}
+                      >
                         <p className="text-gray-800 text-sm flex-1 mr-4">
                           {pregunta.texto_pregunta}
                         </p>
@@ -1283,6 +1423,14 @@ const Auditoria = () => {
                     (ID: {auditoriaActual.id_auditoria})
                   </span>
                 </h2>
+                <Button 
+                  onClick={manejarFinalizarAuditoriaConValidacion}
+                  variant="primary"
+                  disabled={isSaving}
+                  className="bg-green-600 hover:bg-green-700"
+                >
+                  {isSaving ? 'Finalizando...' : '✅ Finalizar Auditoría'}
+                </Button>
               </div>
               
               <GestorFotos 
@@ -1318,6 +1466,14 @@ const Auditoria = () => {
                     (ID: {auditoriaActual.id_auditoria})
                   </span>
                 </h2>
+                <Button 
+                  onClick={manejarFinalizarAuditoriaConValidacion}
+                  variant="primary"
+                  disabled={isSaving}
+                  className="bg-green-600 hover:bg-green-700"
+                >
+                  {isSaving ? 'Finalizando...' : '✅ Finalizar Auditoría'}
+                </Button>
               </div>
               
               {/* Sección de Notas y Conclusiones */}
@@ -1417,8 +1573,106 @@ const Auditoria = () => {
       {/* Modales */}
       {showResumenModal && renderResumenModal()}
       {showAuditoriasModal && renderAuditoriasAnterioresModal()}
+      {showConfirmFinalizarModal && renderConfirmFinalizarModal()}
     </div>
   );
+
+  // Modal de confirmación para finalizar con preguntas pendientes
+  function renderConfirmFinalizarModal() {
+    return (
+      <Modal
+        isOpen={showConfirmFinalizarModal}
+        onClose={cancelarFinalizacion}
+        title="⚠️ Preguntas Sin Responder"
+        size="lg"
+      >
+        <div className="p-6 space-y-6">
+          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+            <div className="flex items-start">
+              <div className="flex-shrink-0">
+                <div className="w-8 h-8 bg-yellow-400 rounded-full flex items-center justify-center">
+                  <span className="text-yellow-800 font-bold">!</span>
+                </div>
+              </div>
+              <div className="ml-3">
+                <h3 className="text-lg font-medium text-yellow-800 mb-2">
+                  Hay {preguntasSinResponder.length} pregunta(s) sin responder
+                </h3>
+                <p className="text-yellow-700">
+                  Las preguntas sin responder se considerarán como <strong>NO APROBADAS</strong> y 
+                  afectarán la calificación final de la auditoría.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white border border-gray-200 rounded-lg p-4 max-h-64 overflow-y-auto">
+            <h4 className="font-medium text-gray-800 mb-3">Preguntas pendientes:</h4>
+            <div className="space-y-2">
+              {preguntasSinResponder.slice(0, 8).map((pregunta, index) => (
+                <div 
+                  key={index} 
+                  className="border-l-4 border-red-300 pl-3 py-2 bg-red-50 rounded-r cursor-pointer hover:bg-red-100 transition-colors duration-200 group"
+                  onClick={() => navegarAPregunta(pregunta.id_auditoria_pregunta)}
+                  title="Clic para ir a esta pregunta"
+                >
+                  <div className="text-sm">
+                    <p className="font-medium text-red-800 group-hover:text-red-900">
+                      📍 {pregunta.categoria} → {pregunta.subcategoria}
+                    </p>
+                    <p className="text-red-700 mt-1 group-hover:text-red-800">
+                      {pregunta.pregunta.length > 100 
+                        ? `${pregunta.pregunta.slice(0, 100)}...`
+                        : pregunta.pregunta
+                      }
+                    </p>
+                    <p className="text-xs text-red-500 mt-1 group-hover:text-red-600 font-medium">
+                      👆 Clic aquí para ir a esta pregunta
+                    </p>
+                  </div>
+                </div>
+              ))}
+              
+              {preguntasSinResponder.length > 8 && (
+                <div className="text-center text-gray-500 text-sm py-2">
+                  ... y {preguntasSinResponder.length - 8} pregunta(s) más
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <h4 className="font-medium text-blue-800 mb-2">💡 Navegación Rápida:</h4>
+            <p className="text-blue-700 text-sm">
+              <strong>Haz clic en cualquier pregunta</strong> de la lista para ir directamente a ella y responderla. 
+              El modal se cerrará automáticamente y la página se desplazará hasta la pregunta seleccionada.
+            </p>
+            <p className="text-blue-600 text-xs mt-2">
+              ✨ También puedes finalizar la auditoría con preguntas pendientes, pero afectará la calificación final.
+            </p>
+          </div>
+
+          <div className="flex flex-col sm:flex-row gap-3 justify-end">
+            <Button 
+              onClick={cancelarFinalizacion}
+              variant="secondary"
+              className="flex-1 sm:flex-none"
+            >
+              📝 Volver a Completar
+            </Button>
+            <Button 
+              onClick={confirmarFinalizacionConPendientes}
+              variant="danger"
+              disabled={isSaving}
+              className="flex-1 sm:flex-none"
+            >
+              {isSaving ? 'Finalizando...' : '✅ Finalizar de Todas Formas'}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+    );
+  }
 
   // Modal para mostrar auditorías anteriores
   function renderAuditoriasAnterioresModal() {

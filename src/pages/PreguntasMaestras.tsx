@@ -3,10 +3,12 @@ import { useNavigate } from 'react-router-dom';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
 import { supabase } from '../supabaseClient';
+import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from 'recharts';
 
 interface Categoria {
   id: number;
   nombre: string;
+  peso: number;
 }
 
 interface Subcategoria {
@@ -48,12 +50,21 @@ const PreguntasMaestras = () => {
   // Estados para eliminar preguntas
   const [eliminando, setEliminando] = useState<number | null>(null);
   
+  // Estados para edición de categorías
+  const [categoriaEnEdicion, setCategoriaEnEdicion] = useState<number | null>(null);
+  const [pesoEditando, setPesoEditando] = useState<number>(0);
+  const [guardandoCategoria, setGuardandoCategoria] = useState(false);
+  
+  // Estado para controlar vista de distribución de pesos
+  const [vistaDistribucion, setVistaDistribucion] = useState<'barras' | 'pie'>('barras');
+  
   // Estados para agregar categorías/subcategorías
   const [mostrandoFormularioCategoria, setMostrandoFormularioCategoria] = useState<'categoria' | 'subcategoria' | null>(null);
   const [nuevaCategoriaNombre, setNuevaCategoriaNombre] = useState<string>('');
   const [nuevaSubcategoriaNombre, setNuevaSubcategoriaNombre] = useState<string>('');
   const [categoriaSeleccionada, setCategoriaSeleccionada] = useState<number | null>(null);
   const [agregandoCategoria, setAgregandoCategoria] = useState(false);
+  const [pesoNuevaCategoria, setPesoNuevaCategoria] = useState<number>(10);
 
   useEffect(() => {
     cargarDatos();
@@ -262,6 +273,11 @@ const PreguntasMaestras = () => {
       return;
     }
 
+    if (pesoNuevaCategoria < 1 || pesoNuevaCategoria > 100) {
+      setError('El peso debe estar entre 1 y 100');
+      return;
+    }
+
     setAgregandoCategoria(true);
     setError(null);
 
@@ -285,7 +301,7 @@ const PreguntasMaestras = () => {
         .insert({
           nombre: nuevaCategoriaNombre.trim(),
           orden: nuevoOrden,
-          peso: 10, // Peso por defecto
+          peso: pesoNuevaCategoria,
           activo: true
         })
         .select()
@@ -298,6 +314,7 @@ const PreguntasMaestras = () => {
 
       // Limpiar formulario
       setNuevaCategoriaNombre('');
+      setPesoNuevaCategoria(10);
       setMostrandoFormularioCategoria(null);
 
       setMensajeExito('Nueva categoría agregada exitosamente');
@@ -310,6 +327,64 @@ const PreguntasMaestras = () => {
       setError('Error al agregar la nueva categoría');
     } finally {
       setAgregandoCategoria(false);
+    }
+  };
+
+  // Función para iniciar edición de peso de categoría
+  const iniciarEdicionPeso = (categoriaId: number, pesoActual: number) => {
+    setCategoriaEnEdicion(categoriaId);
+    setPesoEditando(pesoActual);
+  };
+
+  // Función para cancelar edición de peso
+  const cancelarEdicionPeso = () => {
+    setCategoriaEnEdicion(null);
+    setPesoEditando(0);
+  };
+
+  // Función para guardar nuevo peso de categoría
+  const guardarPesoCategoria = async (categoriaId: number) => {
+    if (pesoEditando < 1 || pesoEditando > 100) {
+      setError('El peso debe estar entre 1 y 100');
+      return;
+    }
+
+    setGuardandoCategoria(true);
+    setError(null);
+
+    try {
+      const { error: updateError } = await supabase
+        .from('categorias')
+        .update({ 
+          peso: pesoEditando,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', categoriaId);
+
+      if (updateError) throw updateError;
+
+      // Actualizar estado local
+      setCategorias(prev => 
+        prev.map(cat => 
+          cat.id === categoriaId 
+            ? { ...cat, peso: pesoEditando }
+            : cat
+        )
+      );
+
+      setCategoriaEnEdicion(null);
+      setPesoEditando(0);
+
+      setMensajeExito('Peso de categoría actualizado exitosamente');
+      setTimeout(() => setMensajeExito(null), 3000);
+
+      console.log('✅ Peso de categoría actualizado exitosamente');
+
+    } catch (error) {
+      console.error('Error actualizando peso de categoría:', error);
+      setError('Error al actualizar el peso de la categoría');
+    } finally {
+      setGuardandoCategoria(false);
     }
   };
 
@@ -433,6 +508,164 @@ const PreguntasMaestras = () => {
         </div>
       </div>
 
+      {/* Resumen de pesos de categorías */}
+      {!isLoading && categorias.length > 0 && (
+        <Card className="mb-6">
+          <div className="p-6">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-lg font-bold text-gray-800">
+                📊 Distribución de Pesos por Categoría
+              </h2>
+              <div className="flex gap-2">
+                <Button
+                  variant={vistaDistribucion === 'barras' ? 'primary' : 'secondary'}
+                  onClick={() => setVistaDistribucion('barras')}
+                  className="text-xs px-3 py-1"
+                >
+                  📊 Barras
+                </Button>
+                <Button
+                  variant={vistaDistribucion === 'pie' ? 'primary' : 'secondary'}
+                  onClick={() => setVistaDistribucion('pie')}
+                  className="text-xs px-3 py-1"
+                >
+                  🥧 Gráfica de Pie
+                </Button>
+              </div>
+            </div>
+            
+            {vistaDistribucion === 'barras' ? (
+              // Vista de barras (original)
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+              {categorias.map(categoria => (
+                <div key={categoria.id} className="bg-blue-50 rounded-lg p-3 border border-blue-200">
+                  <div className="flex justify-between items-center">
+                    <span className="font-medium text-blue-900 text-sm">
+                      {categoria.nombre}
+                    </span>
+                    <span className="font-bold text-blue-700 text-lg">
+                      {categoria.peso}%
+                    </span>
+                  </div>
+                  <div className="mt-2 bg-blue-200 rounded-full h-2">
+                    <div 
+                      className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                      style={{ width: `${categoria.peso}%` }}
+                    />
+                  </div>
+                </div>
+              ))}
+              </div>
+            ) : (
+              // Vista de gráfica de pie
+              <div className="flex flex-col lg:flex-row gap-6 items-center">
+                {/* Gráfica de pie */}
+                <div className="flex-1 h-80">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={categorias.map((categoria, index) => ({
+                          name: categoria.nombre,
+                          value: categoria.peso,
+                          color: [
+                            '#3B82F6', // Azul
+                            '#10B981', // Verde
+                            '#F59E0B', // Amarillo
+                            '#EF4444', // Rojo
+                            '#8B5CF6', // Violeta
+                            '#F97316', // Naranja
+                            '#06B6D4', // Cian
+                            '#EC4899', // Rosa
+                          ][index % 8]
+                        }))}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={60}
+                        outerRadius={120}
+                        paddingAngle={2}
+                        dataKey="value"
+                      >
+                        {categorias.map((_, index) => (
+                          <Cell
+                            key={`cell-${index}`}
+                            fill={[
+                              '#3B82F6', '#10B981', '#F59E0B', '#EF4444',
+                              '#8B5CF6', '#F97316', '#06B6D4', '#EC4899'
+                            ][index % 8]}
+                          />
+                        ))}
+                      </Pie>
+                      <Tooltip 
+                        formatter={(value) => [`${value}%`, 'Peso']}
+                        labelStyle={{ color: '#374151' }}
+                        contentStyle={{ 
+                          backgroundColor: '#F9FAFB',
+                          border: '1px solid #D1D5DB',
+                          borderRadius: '8px'
+                        }}
+                      />
+                      <Legend 
+                        verticalAlign="bottom" 
+                        height={36}
+                        formatter={(value) => <span style={{ color: '#374151' }}>{value}</span>}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+                
+                {/* Lista de categorías con colores */}
+                <div className="lg:w-80">
+                  <h3 className="text-sm font-semibold text-gray-700 mb-3">Categorías:</h3>
+                  <div className="space-y-2">
+                    {categorias.map((categoria, index) => (
+                      <div key={categoria.id} className="flex items-center justify-between p-2 bg-white rounded border">
+                        <div className="flex items-center gap-3">
+                          <div 
+                            className="w-4 h-4 rounded-full"
+                            style={{ 
+                              backgroundColor: [
+                                '#3B82F6', '#10B981', '#F59E0B', '#EF4444',
+                                '#8B5CF6', '#F97316', '#06B6D4', '#EC4899'
+                              ][index % 8]
+                            }}
+                          />
+                          <span className="text-sm font-medium text-gray-700">
+                            {categoria.nombre}
+                          </span>
+                        </div>
+                        <span className="text-sm font-bold text-gray-900">
+                          {categoria.peso}%
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+            
+            <div className="mt-6 p-3 bg-gray-100 rounded-lg">
+              <div className="flex justify-between items-center text-sm">
+                <span className="font-medium text-gray-600">
+                  Total de pesos asignados:
+                </span>
+                <span className={`font-bold text-lg ${
+                  categorias.reduce((sum, cat) => sum + cat.peso, 0) === 100 
+                    ? 'text-green-600' 
+                    : 'text-red-600'
+                }`}>
+                  {categorias.reduce((sum, cat) => sum + cat.peso, 0)}%
+                </span>
+              </div>
+              {categorias.reduce((sum, cat) => sum + cat.peso, 0) !== 100 && (
+                <p className="text-xs text-red-600 mt-1">
+                  ⚠️ Los pesos deberían sumar 100% para una evaluación equilibrada
+                </p>
+              )}
+            </div>
+          </div>
+        </Card>
+      )}
+
       {error && (
         <div className="mb-6 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
           <strong className="font-bold">Error: </strong>
@@ -481,13 +714,31 @@ const PreguntasMaestras = () => {
                 📂 Agregar Nueva Categoría
               </h4>
               <div className="space-y-3">
-                <input
-                  type="text"
-                  value={nuevaCategoriaNombre}
-                  onChange={(e) => setNuevaCategoriaNombre(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                  placeholder="Nombre de la nueva categoría..."
-                />
+                <div className="space-y-3">
+                  <input
+                    type="text"
+                    value={nuevaCategoriaNombre}
+                    onChange={(e) => setNuevaCategoriaNombre(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                    placeholder="Nombre de la nueva categoría..."
+                  />
+                  <div className="flex items-center gap-3">
+                    <label className="text-sm font-medium text-gray-600 whitespace-nowrap">
+                      Peso (%):
+                    </label>
+                    <input
+                      type="number"
+                      min="1"
+                      max="100"
+                      value={pesoNuevaCategoria}
+                      onChange={(e) => setPesoNuevaCategoria(parseInt(e.target.value) || 10)}
+                      className="w-20 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm text-center"
+                    />
+                    <span className="text-xs text-gray-500">
+                      (Entre 1 y 100)
+                    </span>
+                  </div>
+                </div>
                 <div className="flex gap-2 justify-end">
                   <Button
                     variant="secondary"
@@ -495,6 +746,7 @@ const PreguntasMaestras = () => {
                     onClick={() => {
                       setMostrandoFormularioCategoria(null);
                       setNuevaCategoriaNombre('');
+                      setPesoNuevaCategoria(10);
                     }}
                     disabled={agregandoCategoria}
                   >
@@ -572,9 +824,61 @@ const PreguntasMaestras = () => {
         {Object.values(preguntasOrganizadas).map(({ categoria, subcategorias }) => (
           <Card key={categoria.id}>
             <div className="p-6">
-              <h2 className="text-2xl font-bold text-gray-800 mb-4">
-                📂 {categoria.nombre}
-              </h2>
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-2xl font-bold text-gray-800">
+                  📂 {categoria.nombre}
+                </h2>
+                
+                <div className="flex items-center gap-4">
+                  {categoriaEnEdicion === categoria.id ? (
+                    // Modo edición de peso
+                    <div className="flex items-center gap-2">
+                      <label className="text-sm font-medium text-gray-600">
+                        Peso:
+                      </label>
+                      <input
+                        type="number"
+                        min="1"
+                        max="100"
+                        value={pesoEditando}
+                        onChange={(e) => setPesoEditando(parseInt(e.target.value) || 0)}
+                        className="w-16 px-2 py-1 border border-gray-300 rounded text-center text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                      <span className="text-sm text-gray-500">%</span>
+                      <Button
+                        variant="primary"
+                        className="text-xs px-2 py-1"
+                        onClick={() => guardarPesoCategoria(categoria.id)}
+                        disabled={guardandoCategoria}
+                      >
+                        {guardandoCategoria ? '�' : '✅'}
+                      </Button>
+                      <Button
+                        variant="secondary"
+                        className="text-xs px-2 py-1"
+                        onClick={cancelarEdicionPeso}
+                        disabled={guardandoCategoria}
+                      >
+                        ❌
+                      </Button>
+                    </div>
+                  ) : (
+                    // Modo visualización
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-blue-600 bg-blue-50 px-2 py-1 rounded">
+                        Peso: {categoria.peso}%
+                      </span>
+                      <Button
+                        variant="secondary"
+                        className="text-xs px-2 py-1"
+                        onClick={() => iniciarEdicionPeso(categoria.id, categoria.peso)}
+                      >
+                        ✏️ Editar Peso
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              </div>
               
               <div className="space-y-4">
                 {Object.values(subcategorias).map(({ subcategoria, preguntas: preguntasSubcat }) => (
