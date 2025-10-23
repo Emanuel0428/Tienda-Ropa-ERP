@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../supabaseClient';
 import { useAuth } from './useAuth';
 import {
@@ -598,27 +598,57 @@ export const useAudit = () => {
     await guardarRespuesta(id_auditoria_pregunta, valor);
   };
 
-  const handleComentarioChange = async (id_auditoria_pregunta: number, comentario: string) => {
+  // Refs para manejar timeouts de debounce
+  const comentarioTimeoutRef = useRef<Record<number, NodeJS.Timeout>>({});
+  const accionCorrectivaTimeoutRef = useRef<Record<number, NodeJS.Timeout>>({});
+
+  const handleComentarioChange = (id_auditoria_pregunta: number, comentario: string) => {
+    // Actualizar estado local inmediatamente (para la UI)
     const respuestaActual = respuestas.get(id_auditoria_pregunta);
     if (respuestaActual) {
-      await guardarRespuesta(
-        id_auditoria_pregunta, 
-        respuestaActual.respuesta, 
-        comentario, 
-        respuestaActual.accion_correctiva
-      );
+      const nuevaRespuesta = { ...respuestaActual, comentario };
+      setRespuestas(prev => new Map(prev.set(id_auditoria_pregunta, nuevaRespuesta)));
+
+      // Limpiar timeout anterior si existe
+      if (comentarioTimeoutRef.current[id_auditoria_pregunta]) {
+        clearTimeout(comentarioTimeoutRef.current[id_auditoria_pregunta]);
+      }
+
+      // Establecer nuevo timeout para guardar después de 1 segundo sin escribir
+      comentarioTimeoutRef.current[id_auditoria_pregunta] = setTimeout(async () => {
+        await guardarRespuesta(
+          id_auditoria_pregunta, 
+          respuestaActual.respuesta, 
+          comentario, 
+          respuestaActual.accion_correctiva
+        );
+        delete comentarioTimeoutRef.current[id_auditoria_pregunta];
+      }, 1000);
     }
   };
 
-  const handleAccionCorrectivaChange = async (id_auditoria_pregunta: number, accionCorrectiva: string) => {
+  const handleAccionCorrectivaChange = (id_auditoria_pregunta: number, accionCorrectiva: string) => {
+    // Actualizar estado local inmediatamente (para la UI)
     const respuestaActual = respuestas.get(id_auditoria_pregunta);
     if (respuestaActual) {
-      await guardarRespuesta(
-        id_auditoria_pregunta, 
-        respuestaActual.respuesta, 
-        respuestaActual.comentario, 
-        accionCorrectiva
-      );
+      const nuevaRespuesta = { ...respuestaActual, accion_correctiva: accionCorrectiva };
+      setRespuestas(prev => new Map(prev.set(id_auditoria_pregunta, nuevaRespuesta)));
+
+      // Limpiar timeout anterior si existe
+      if (accionCorrectivaTimeoutRef.current[id_auditoria_pregunta]) {
+        clearTimeout(accionCorrectivaTimeoutRef.current[id_auditoria_pregunta]);
+      }
+
+      // Establecer nuevo timeout para guardar después de 1 segundo sin escribir
+      accionCorrectivaTimeoutRef.current[id_auditoria_pregunta] = setTimeout(async () => {
+        await guardarRespuesta(
+          id_auditoria_pregunta, 
+          respuestaActual.respuesta, 
+          respuestaActual.comentario, 
+          accionCorrectiva
+        );
+        delete accionCorrectivaTimeoutRef.current[id_auditoria_pregunta];
+      }, 1000);
     }
   };
 
@@ -862,6 +892,20 @@ export const useAudit = () => {
   // Efectos
   useEffect(() => {
     cargarEstructuraCatalogo();
+  }, []);
+
+  // Limpieza de timeouts al desmontar
+  useEffect(() => {
+    return () => {
+      // Limpiar timeouts de comentarios
+      Object.values(comentarioTimeoutRef.current).forEach(timeout => {
+        clearTimeout(timeout);
+      });
+      // Limpiar timeouts de acciones correctivas
+      Object.values(accionCorrectivaTimeoutRef.current).forEach(timeout => {
+        clearTimeout(timeout);
+      });
+    };
   }, []);
 
   // Retorno del hook

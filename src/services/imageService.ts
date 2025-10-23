@@ -44,14 +44,29 @@ export const subirFotoAuditoria = async (
       return { success: false, error: 'La imagen no puede superar los 5MB' };
     }
 
+    // Función para normalizar texto eliminando caracteres especiales
+    const normalizeText = (text: string): string => {
+      return text
+        .normalize('NFD') // Descompone caracteres acentuados
+        .replace(/[\u0300-\u036f]/g, '') // Elimina diacríticos (acentos)
+        .replace(/ñ/g, 'n') // Reemplaza ñ por n
+        .replace(/Ñ/g, 'N') // Reemplaza Ñ por N
+        .replace(/[^a-zA-Z0-9\s-_]/g, '') // Elimina caracteres especiales
+        .replace(/\s+/g, '_') // Reemplaza espacios por guiones bajos
+        .toLowerCase(); // Convierte a minúsculas
+    };
+
     // Generar nombre único para el archivo
     const timestamp = Date.now();
-    const extension = archivo.name.split('.').pop();
-    const nombreArchivo = `auditoria_${idAuditoria}_${tipoFoto.replace(/\s+/g, '_')}_${timestamp}.${extension}`;
+    const extension = archivo.name.split('.').pop()?.toLowerCase();
+    const tipoFotoNormalizado = normalizeText(tipoFoto);
+    const nombreArchivo = `auditoria_${idAuditoria}_${tipoFotoNormalizado}_${timestamp}.${extension}`;
     const rutaArchivo = `auditorias/${idAuditoria}/${nombreArchivo}`;
 
+    console.log('📝 Nombre de archivo generado:', nombreArchivo);
+
     // Subir archivo a Supabase Storage
-    const { data: uploadData, error: uploadError } = await supabase.storage
+    const { error: uploadError } = await supabase.storage
       .from('auditoria-fotos')
       .upload(rutaArchivo, archivo, {
         cacheControl: '3600',
@@ -73,23 +88,61 @@ export const subirFotoAuditoria = async (
     }
 
     // Guardar referencia en la base de datos
+    const insertData = {
+      id_auditoria: idAuditoria,
+      tipo_foto: tipoFoto,
+      url_foto: urlData.publicUrl
+    };
+    
+    console.log('Intentando insertar en auditoria_fotos:', insertData);
+    
+    // Verificar si la auditoría existe
+    const { data: auditoriaExiste, error: auditoriaError } = await supabase
+      .from('auditorias')
+      .select('id_auditoria')
+      .eq('id_auditoria', idAuditoria)
+      .single();
+    
+    if (auditoriaError || !auditoriaExiste) {
+      console.error('La auditoría no existe:', auditoriaError);
+      return { success: false, error: `La auditoría ${idAuditoria} no existe` };
+    }
+    
+    // Obtener el próximo ID disponible
+    const { data: maxIdData } = await supabase
+      .from('auditoria_fotos')
+      .select('id_auditoria_foto')
+      .order('id_auditoria_foto', { ascending: false })
+      .limit(1);
+    
+    const nextId = maxIdData && maxIdData.length > 0 ? maxIdData[0].id_auditoria_foto + 1 : 1;
+    
+    const insertDataWithId = {
+      ...insertData,
+      id_auditoria_foto: nextId
+    };
+    
+    console.log('Insertando con ID generado:', insertDataWithId);
+    
     const { data: fotoData, error: dbError } = await supabase
       .from('auditoria_fotos')
-      .insert({
-        id_auditoria: idAuditoria,
-        tipo_foto: tipoFoto,
-        url_foto: urlData.publicUrl
-      })
+      .insert(insertDataWithId)
       .select()
       .single();
 
     if (dbError) {
       console.error('Error guardando en BD:', dbError);
+      console.error('Detalles del error:', {
+        message: dbError.message,
+        details: dbError.details,
+        hint: dbError.hint,
+        code: dbError.code
+      });
       // Intentar eliminar el archivo subido si falló la BD
       await supabase.storage
         .from('auditoria-fotos')
         .remove([rutaArchivo]);
-      return { success: false, error: 'Error al guardar la referencia en la base de datos' };
+      return { success: false, error: `Error al guardar la referencia en la base de datos: ${dbError.message}` };
     }
 
     return { success: true, data: fotoData };
