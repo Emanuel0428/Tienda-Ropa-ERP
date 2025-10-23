@@ -7,4 +7,17 @@ export default defineConfig({
   optimizeDeps: {
     exclude: ['lucide-react'],
   },
+  server: {
+    proxy: {
+      '/api/n8n': {
+        target: 'http://localhost:5678',
+        changeOrigin: true,
+        secure: false,
+        rewrite: (path) => path.replace(/^\/api\/n8n/, ''),
+        configure: (proxy, options) => {
+          console.log('Proxy configurado para:', options.target);
+        }
+      }
+    }
+  }
 });

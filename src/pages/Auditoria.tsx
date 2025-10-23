@@ -8,6 +8,7 @@ import { useAudit } from '../hooks/useAudit';
 import { supabase } from '../supabaseClient';
 import type { Auditoria, Respuesta } from '../types/audit';
 import GestorFotos from '../components/GestorFotos';
+import { obtenerConteoFotos } from '../services/imageService';
 
 const Auditoria = () => {
   const navigate = useNavigate();
@@ -481,15 +482,79 @@ const Auditoria = () => {
     }
   };
 
+  // Función para notificar a n8n cuando se completa una auditoría
+  const notificarAuditoriaCompletada = async (datosAuditoria: Auditoria) => {
+    try {
+      console.log('📧 Enviando notificación a n8n...');
+      
+      // Obtener información adicional
+      const resumen = calcularResumen();
+      const tiendaNombre = tiendaSeleccionada?.nombre || 'Tienda desconocida';
+      
+      // Obtener conteo de fotos usando tu servicio existente
+      let totalFotos = 0;
+      try {
+        const { data: conteoFotos } = await obtenerConteoFotos(datosAuditoria.id_auditoria);
+        totalFotos = conteoFotos ? Object.values(conteoFotos).reduce((a: number, b: number) => a + b, 0) : 0;
+      } catch (error) {
+        console.warn('No se pudo obtener conteo de fotos:', error);
+      }
+      
+      const payload = {
+        auditoria_id: datosAuditoria.id_auditoria,
+        tienda: tiendaNombre,
+        calificacion: Math.round(resumen.calificacion_total_ponderada),
+        fecha: new Date().toLocaleDateString('es-ES'),
+        auditor: 'Sistema Auditorías', // Puedes cambiarlo por el usuario actual
+        estado: 'completada',
+        total_preguntas: resumen.total_preguntas,
+        preguntas_aprobadas: resumen.preguntas_aprobadas,
+        preguntas_reprobadas: resumen.preguntas_reprobadas,
+        total_fotos: totalFotos,
+        timestamp: new Date().toISOString(),
+        // Agregar información de categorías
+        categorias: categorias.map(cat => ({
+          nombre: cat.nombre,
+          peso: cat.peso || 0,
+        }))
+      };
+
+      const response = await fetch('/api/n8n/webhook-test/auditoria-completada', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload)
+      });
+
+      if (response.ok) {
+        console.log('✅ Notificación enviada exitosamente a n8n');
+        // Opcional: mostrar toast de éxito
+        setShowSuccessMessage(true);
+        setTimeout(() => setShowSuccessMessage(false), 3000);
+      } else {
+        console.error('❌ Error enviando notificación a n8n:', response.status);
+      }
+    } catch (error) {
+      console.error('❌ Error conectando con n8n:', error);
+      // No fallar la finalización por error de notificación
+    }
+  };
+
   // Función wrapper para finalizar auditoría con redirección
   const manejarFinalizarAuditoria = async () => {
     try {
       const exito = await finalizarAuditoria();
-      if (exito) {
-        console.log('🎉 Auditoría finalizada exitosamente, redirigiendo a estadísticas...');
+      if (exito && auditoriaActual) {
+        console.log('🎉 Auditoría finalizada exitosamente');
+        
+        // 🚀 NUEVA LÍNEA: Notificar a n8n
+        await notificarAuditoriaCompletada(auditoriaActual);
+        
+        console.log('🎉 Redirección a estadísticas en 2 segundos...');
         // Pequeño delay para mostrar el mensaje de éxito antes de redireccionar
         setTimeout(() => {
-          navigate('/statistics');
+          navigate('/auditoria/estadisticas');
         }, 2000);
       }
     } catch (error) {
@@ -808,17 +873,7 @@ const Auditoria = () => {
             Ver Resumen
           </Button>
           
-          {/* Botón Finalizar Auditoría - visible en edición y revisión */}
-          {(modoRevision || auditoriaActual) && (
-            <Button 
-              onClick={manejarFinalizarAuditoriaConValidacion}
-              variant="primary"
-              disabled={isSaving}
-              className="bg-green-600 hover:bg-green-700"
-            >
-              {isSaving ? 'Finalizando...' : '✅ Finalizar Auditoría'}
-            </Button>
-          )}
+
           
           {/* Botones según el modo */}
           {modoRevision ? (
@@ -1423,14 +1478,6 @@ const Auditoria = () => {
                     (ID: {auditoriaActual.id_auditoria})
                   </span>
                 </h2>
-                <Button 
-                  onClick={manejarFinalizarAuditoriaConValidacion}
-                  variant="primary"
-                  disabled={isSaving}
-                  className="bg-green-600 hover:bg-green-700"
-                >
-                  {isSaving ? 'Finalizando...' : '✅ Finalizar Auditoría'}
-                </Button>
               </div>
               
               <GestorFotos 
@@ -1466,14 +1513,6 @@ const Auditoria = () => {
                     (ID: {auditoriaActual.id_auditoria})
                   </span>
                 </h2>
-                <Button 
-                  onClick={manejarFinalizarAuditoriaConValidacion}
-                  variant="primary"
-                  disabled={isSaving}
-                  className="bg-green-600 hover:bg-green-700"
-                >
-                  {isSaving ? 'Finalizando...' : '✅ Finalizar Auditoría'}
-                </Button>
               </div>
               
               {/* Sección de Notas y Conclusiones */}
