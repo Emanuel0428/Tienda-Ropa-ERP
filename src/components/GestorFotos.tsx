@@ -26,10 +26,24 @@ const GestorFotos: React.FC<GestorFotosProps> = ({ idAuditoria, readonly = false
   const [fotosViendo, setFotosViendo] = useState<AuditoriaFoto[]>([]);
   const [fotoModalAbierta, setFotoModalAbierta] = useState<string | null>(null);
 
+  // Detectar si es iOS
+  const esIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+  const esSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+
   useEffect(() => {
     if (idAuditoria) {
       cargarFotos();
       cargarConteo();
+    }
+    
+    // Log de información del dispositivo para diagnóstico
+    if (esIOS) {
+      console.log('📱 Dispositivo iOS detectado:', {
+        userAgent: navigator.userAgent,
+        platform: navigator.platform,
+        safari: esSafari,
+        touchSupport: 'ontouchstart' in window
+      });
     }
   }, [idAuditoria]);
 
@@ -61,28 +75,58 @@ const GestorFotos: React.FC<GestorFotosProps> = ({ idAuditoria, readonly = false
     setSubiendo(tipoFoto);
     setError(null);
 
-    const result = await subirFotoAuditoria(idAuditoria, tipoFoto, archivo);
+    console.log('📱 Iniciando subida desde iOS:', {
+      tipo: tipoFoto,
+      archivo: archivo.name,
+      size: archivo.size,
+      type: archivo.type
+    });
 
-    if (result.success && result.data) {
-      console.log('✅ Foto subida exitosamente:', result.data);
-      // Actualizar lista de fotos
-      setFotos(prev => {
-        const nuevaLista = [...prev, result.data!];
-        console.log('📋 Lista actualizada de fotos:', nuevaLista);
-        return nuevaLista;
-      });
-      // Actualizar conteo
-      setConteoFotos(prev => ({
-        ...prev,
-        [tipoFoto]: (prev[tipoFoto] || 0) + 1
-      }));
-      
-      // Recargar fotos desde el servidor para asegurar sincronización
-      await cargarFotos();
-      await cargarConteo();
-    } else {
-      console.error('❌ Error subiendo foto:', result.error);
-      setError(result.error || 'Error al subir la foto');
+    try {
+      const result = await subirFotoAuditoria(idAuditoria, tipoFoto, archivo);
+
+      if (result.success && result.data) {
+        console.log('✅ Foto subida exitosamente desde iOS:', result.data);
+        
+        // Actualizar lista de fotos
+        setFotos(prev => {
+          const nuevaLista = [...prev, result.data!];
+          console.log('📋 Lista actualizada de fotos:', nuevaLista);
+          return nuevaLista;
+        });
+        
+        // Actualizar conteo
+        setConteoFotos(prev => ({
+          ...prev,
+          [tipoFoto]: (prev[tipoFoto] || 0) + 1
+        }));
+        
+        // Recargar fotos desde el servidor para asegurar sincronización
+        await cargarFotos();
+        await cargarConteo();
+        
+        // Mensaje de éxito específico para móvil
+        console.log('📱 Foto subida correctamente desde dispositivo móvil');
+        
+      } else {
+        console.error('❌ Error subiendo foto desde iOS:', result.error);
+        
+        // Mensajes de error más específicos para iOS
+        let mensajeError = result.error || 'Error al subir la foto';
+        
+        if (mensajeError.includes('Invalid key') || mensajeError.includes('key')) {
+          mensajeError = 'Error con el nombre de archivo. Intenta tomar otra foto.';
+        } else if (mensajeError.includes('size') || mensajeError.includes('large')) {
+          mensajeError = 'La imagen es muy grande. Intenta con una foto más pequeña.';
+        } else if (mensajeError.includes('network') || mensajeError.includes('connection')) {
+          mensajeError = 'Error de conexión. Verifica tu internet e intenta de nuevo.';
+        }
+        
+        setError(`📱 ${mensajeError}`);
+      }
+    } catch (error) {
+      console.error('📱 Error inesperado subiendo foto desde iOS:', error);
+      setError('Error inesperado. Verifica tu conexión e intenta de nuevo.');
     }
 
     setSubiendo(null);
@@ -119,21 +163,65 @@ const GestorFotos: React.FC<GestorFotosProps> = ({ idAuditoria, readonly = false
   const FileInput: React.FC<{ tipoFoto: TipoFoto; onFileSelect: (file: File) => void }> = ({ 
     tipoFoto, 
     onFileSelect 
-  }) => (
-    <input
-      type="file"
-      accept="image/*"
-      onChange={(e) => {
-        const file = e.target.files?.[0];
-        if (file) {
-          onFileSelect(file);
-        }
-        e.target.value = ''; // Reset input
-      }}
-      style={{ display: 'none' }}
-      id={`file-input-${tipoFoto.replace(/\s+/g, '-')}`}
-    />
-  );
+  }) => {
+    const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      
+      if (!file) {
+        console.log('📱 No se seleccionó archivo');
+        return;
+      }
+
+      console.log('📱 Archivo seleccionado desde iOS:', {
+        name: file.name,
+        size: file.size,
+        type: file.type,
+        lastModified: file.lastModified
+      });
+
+      // Validaciones específicas para iOS
+      if (file.size === 0) {
+        setError('Error: El archivo está vacío. Intenta seleccionar otra foto.');
+        e.target.value = '';
+        return;
+      }
+
+      if (file.size > 10 * 1024 * 1024) { // 10MB límite para iOS
+        setError('Error: La imagen es muy grande. Máximo 10MB permitido.');
+        e.target.value = '';
+        return;
+      }
+
+      // Verificar que sea realmente una imagen
+      if (!file.type.startsWith('image/')) {
+        setError('Error: Por favor selecciona solo archivos de imagen.');
+        e.target.value = '';
+        return;
+      }
+
+      try {
+        onFileSelect(file);
+      } catch (error) {
+        console.error('📱 Error procesando archivo iOS:', error);
+        setError('Error al procesar la imagen. Intenta de nuevo.');
+      }
+      
+      // Reset input
+      e.target.value = '';
+    };
+
+    return (
+      <input
+        type="file"
+        accept="image/*,image/heic,image/heif"
+        capture="environment"
+        onChange={handleFileChange}
+        style={{ display: 'none' }}
+        id={`file-input-${tipoFoto.replace(/\s+/g, '-')}`}
+        multiple={false}
+      />
+    );
+  };
 
   if (isLoading) {
     return (
@@ -152,6 +240,26 @@ const GestorFotos: React.FC<GestorFotosProps> = ({ idAuditoria, readonly = false
         <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
           <strong className="font-bold">Error: </strong>
           <span>{error}</span>
+          {esIOS && (
+            <div className="mt-2 text-sm text-red-600">
+              <strong>💡 Consejos para iOS:</strong>
+              <ul className="list-disc list-inside mt-1">
+                <li>Intenta tomar una nueva foto con la cámara</li>
+                <li>Verifica que tengas buena conexión a internet</li>
+                <li>Si la foto es muy grande, intenta usar menor calidad</li>
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
+
+      {esIOS && !error && (
+        <div className="bg-blue-50 border border-blue-200 text-blue-700 px-4 py-3 rounded">
+          <strong className="font-bold">📱 Dispositivo iOS detectado</strong>
+          <p className="text-sm mt-1">
+            Las fotos se pueden subir en formato HEIC/HEIF y se convertirán automáticamente. 
+            Máximo 10MB por imagen.
+          </p>
         </div>
       )}
 

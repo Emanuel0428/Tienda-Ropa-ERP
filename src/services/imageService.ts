@@ -33,15 +33,37 @@ export const subirFotoAuditoria = async (
   archivo: File
 ): Promise<{ success: boolean; data?: AuditoriaFoto; error?: string }> => {
   try {
-    // Validar archivo
-    if (!archivo.type.startsWith('image/')) {
-      return { success: false, error: 'El archivo debe ser una imagen' };
+    console.log('📱 Procesando archivo iOS:', {
+      name: archivo.name,
+      size: archivo.size,
+      type: archivo.type,
+      lastModified: archivo.lastModified
+    });
+
+    // Validar archivo - incluir formatos iOS
+    const formatosPermitidos = [
+      'image/jpeg', 'image/jpg', 'image/png', 'image/webp',
+      'image/heic', 'image/heif' // Formatos iOS
+    ];
+    
+    const esImagenValida = archivo.type.startsWith('image/') || 
+                          formatosPermitidos.includes(archivo.type) ||
+                          archivo.name.toLowerCase().match(/\.(jpg|jpeg|png|webp|heic|heif)$/);
+    
+    if (!esImagenValida) {
+      console.error('❌ Tipo de archivo no válido:', archivo.type);
+      return { success: false, error: 'Por favor selecciona un archivo de imagen válido (JPG, PNG, HEIC, etc.)' };
     }
 
-    // Validar tamaño (máximo 5MB)
-    const maxSize = 5 * 1024 * 1024; // 5MB
+    // Validar tamaño (máximo 10MB para iOS)
+    const maxSize = 10 * 1024 * 1024; // 10MB
+    if (archivo.size === 0) {
+      return { success: false, error: 'El archivo está vacío. Intenta seleccionar otra foto.' };
+    }
+    
     if (archivo.size > maxSize) {
-      return { success: false, error: 'La imagen no puede superar los 5MB' };
+      console.error('❌ Archivo muy grande:', archivo.size, 'bytes');
+      return { success: false, error: 'La imagen no puede superar los 10MB' };
     }
 
     // Función para normalizar texto eliminando caracteres especiales
@@ -58,24 +80,55 @@ export const subirFotoAuditoria = async (
 
     // Generar nombre único para el archivo
     const timestamp = Date.now();
-    const extension = archivo.name.split('.').pop()?.toLowerCase();
+    let extension = archivo.name.split('.').pop()?.toLowerCase() || 'jpg';
+    
+    // Convertir formatos iOS a JPG para compatibilidad
+    if (extension === 'heic' || extension === 'heif') {
+      extension = 'jpg';
+      console.log('📱 Convirtiendo formato iOS HEIC/HEIF a JPG');
+    }
+    
+    // Normalizar nombre del tipo de foto
     const tipoFotoNormalizado = normalizeText(tipoFoto);
+    
+    // Generar nombre seguro para Supabase
     const nombreArchivo = `auditoria_${idAuditoria}_${tipoFotoNormalizado}_${timestamp}.${extension}`;
     const rutaArchivo = `auditorias/${idAuditoria}/${nombreArchivo}`;
 
-    console.log('📝 Nombre de archivo generado:', nombreArchivo);
+    console.log('📝 Nombre de archivo generado para iOS:', {
+      original: archivo.name,
+      normalizado: nombreArchivo,
+      ruta: rutaArchivo
+    });
 
-    // Subir archivo a Supabase Storage
+    // Subir archivo a Supabase Storage con configuración para iOS
+    console.log('📱 Iniciando subida a Supabase Storage...');
+    
     const { error: uploadError } = await supabase.storage
       .from('auditoria-fotos')
       .upload(rutaArchivo, archivo, {
         cacheControl: '3600',
-        upsert: false
+        upsert: false,
+        contentType: archivo.type || 'image/jpeg' // Fallback para iOS
       });
 
     if (uploadError) {
-      console.error('Error subiendo archivo:', uploadError);
-      return { success: false, error: 'Error al subir la imagen: ' + uploadError.message };
+      console.error('📱 Error subiendo archivo desde iOS:', uploadError);
+      
+      // Mensajes de error más específicos para iOS
+      let mensajeError = uploadError.message || 'Error desconocido';
+      
+      if (mensajeError.includes('Invalid key') || mensajeError.includes('key')) {
+        mensajeError = 'Nombre de archivo inválido. Intenta tomar otra foto.';
+      } else if (mensajeError.includes('413') || mensajeError.includes('large')) {
+        mensajeError = 'La imagen es muy grande. Intenta con una foto más pequeña.';
+      } else if (mensajeError.includes('401') || mensajeError.includes('403')) {
+        mensajeError = 'Error de permisos. Contacta al administrador.';
+      } else if (mensajeError.includes('network') || mensajeError.includes('fetch')) {
+        mensajeError = 'Error de conexión. Verifica tu internet e intenta de nuevo.';
+      }
+      
+      return { success: false, error: `📱 ${mensajeError}` };
     }
 
     // Obtener URL pública
