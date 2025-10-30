@@ -160,7 +160,7 @@ const GestorFotos: React.FC<GestorFotosProps> = ({ idAuditoria, readonly = false
     setTipoSeleccionado(tipo);
   };
 
-  const FileInput: React.FC<{ tipoFoto: TipoFoto; onFileSelect: (file: File) => void }> = ({ 
+  const FileInputs: React.FC<{ tipoFoto: TipoFoto; onFileSelect: (file: File) => void }> = ({ 
     tipoFoto, 
     onFileSelect 
   }) => {
@@ -211,15 +211,28 @@ const GestorFotos: React.FC<GestorFotosProps> = ({ idAuditoria, readonly = false
     };
 
     return (
-      <input
-        type="file"
-        accept="image/*,image/heic,image/heif"
-        capture="environment"
-        onChange={handleFileChange}
-        style={{ display: 'none' }}
-        id={`file-input-${tipoFoto.replace(/\s+/g, '-')}`}
-        multiple={false}
-      />
+      <>
+        {/* Input para cámara (solo iOS) */}
+        <input
+          type="file"
+          accept="image/*,image/heic,image/heif"
+          capture="environment"
+          onChange={handleFileChange}
+          style={{ display: 'none' }}
+          id={`camera-input-${tipoFoto.replace(/\s+/g, '-')}`}
+          multiple={false}
+        />
+        
+        {/* Input para galería */}
+        <input
+          type="file"
+          accept="image/*,image/heic,image/heif"
+          onChange={handleFileChange}
+          style={{ display: 'none' }}
+          id={`gallery-input-${tipoFoto.replace(/\s+/g, '-')}`}
+          multiple={false}
+        />
+      </>
     );
   };
 
@@ -244,9 +257,10 @@ const GestorFotos: React.FC<GestorFotosProps> = ({ idAuditoria, readonly = false
             <div className="mt-2 text-sm text-red-600">
               <strong>💡 Consejos para iOS:</strong>
               <ul className="list-disc list-inside mt-1">
-                <li>Intenta tomar una nueva foto con la cámara</li>
+                <li>Prueba con el botón "📷 Cámara" para tomar una nueva foto</li>
+                <li>O usa "🖼️ Galería" para seleccionar una foto existente</li>
                 <li>Verifica que tengas buena conexión a internet</li>
-                <li>Si la foto es muy grande, intenta usar menor calidad</li>
+                <li>Si la foto es muy grande, intenta usar menor calidad en cámara</li>
               </ul>
             </div>
           )}
@@ -257,8 +271,14 @@ const GestorFotos: React.FC<GestorFotosProps> = ({ idAuditoria, readonly = false
         <div className="bg-blue-50 border border-blue-200 text-blue-700 px-4 py-3 rounded">
           <strong className="font-bold">📱 Dispositivo iOS detectado</strong>
           <p className="text-sm mt-1">
-            Las fotos se pueden subir en formato HEIC/HEIF y se convertirán automáticamente. 
-            Máximo 10MB por imagen.
+            Tienes dos opciones para subir fotos:
+          </p>
+          <ul className="text-sm mt-2 list-disc list-inside">
+            <li><strong>📷 Cámara:</strong> Toma una nueva foto con la cámara trasera</li>
+            <li><strong>🖼️ Galería:</strong> Selecciona una foto existente de tu galería</li>
+          </ul>
+          <p className="text-xs mt-2 text-blue-600">
+            Formatos soportados: HEIC, HEIF, JPG, PNG (máximo 10MB)
           </p>
         </div>
       )}
@@ -302,21 +322,50 @@ const GestorFotos: React.FC<GestorFotosProps> = ({ idAuditoria, readonly = false
                     
                     {!readonly && (
                       <>
-                        <FileInput 
+                        <FileInputs 
                           tipoFoto={tipo}
-                          onFileSelect={(file) => handleSubirFoto(tipo, file)}
+                          onFileSelect={(file: File) => handleSubirFoto(tipo, file)}
                         />
-                        <Button
-                          variant="primary"
-                          className="text-xs px-2 py-1"
-                          onClick={() => {
-                            const input = document.getElementById(`file-input-${tipo.replace(/\s+/g, '-')}`) as HTMLInputElement;
-                            input?.click();
-                          }}
-                          disabled={estaSubiendo}
-                        >
-                          {estaSubiendo ? '⏳' : '📤'} {estaSubiendo ? 'Subiendo...' : 'Subir'}
-                        </Button>
+                        
+                        {/* Botones separados para iOS */}
+                        {esIOS ? (
+                          <div className="flex gap-1">
+                            <Button
+                              variant="primary"
+                              className="text-xs px-2 py-1"
+                              onClick={() => {
+                                const input = document.getElementById(`camera-input-${tipo.replace(/\s+/g, '-')}`) as HTMLInputElement;
+                                input?.click();
+                              }}
+                              disabled={estaSubiendo}
+                            >
+                              📷 Cámara
+                            </Button>
+                            <Button
+                              variant="secondary"
+                              className="text-xs px-2 py-1"
+                              onClick={() => {
+                                const input = document.getElementById(`gallery-input-${tipo.replace(/\s+/g, '-')}`) as HTMLInputElement;
+                                input?.click();
+                              }}
+                              disabled={estaSubiendo}
+                            >
+                              🖼️ Galería
+                            </Button>
+                          </div>
+                        ) : (
+                          <Button
+                            variant="primary"
+                            className="text-xs px-2 py-1"
+                            onClick={() => {
+                              const input = document.getElementById(`gallery-input-${tipo.replace(/\s+/g, '-')}`) as HTMLInputElement;
+                              input?.click();
+                            }}
+                            disabled={estaSubiendo}
+                          >
+                            {estaSubiendo ? '⏳ Subiendo...' : '📤 Subir'}
+                          </Button>
+                        )}
                       </>
                     )}
                   </div>
