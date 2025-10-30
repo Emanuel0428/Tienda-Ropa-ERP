@@ -5,6 +5,7 @@ import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
 import { useAudit } from '../hooks/useAudit';
+import { useAuth } from '../hooks/useAuth';
 import { supabase } from '../supabaseClient';
 import type { Auditoria, Respuesta } from '../types/audit';
 import GestorFotos from '../components/GestorFotos';
@@ -12,12 +13,17 @@ import { obtenerConteoFotos } from '../services/imageService';
 import { 
   enviarNotificacionAuditoriaCompletada, 
   obtenerDestinatariosNotificacion,
-  formatearFechaEmail 
+  formatearFechaEmail,
+  CategoriaResumen,
+  FotoResumen 
 } from '../services/emailService';
 
 const Auditoria = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  
+  // Hook de autenticación para obtener información del usuario
+  const { user } = useAuth();
   
   const {
     // Estados principales
@@ -488,6 +494,91 @@ const Auditoria = () => {
     }
   };
 
+  // Función auxiliar para obtener el nombre del auditor
+  const obtenerNombreAuditor = async (): Promise<string> => {
+    try {
+      console.log('🔍 Obteniendo nombre del auditor...', { 
+        user: user ? { name: user.name, email: user.email, id: user.id } : null 
+      });
+
+      // Primero, intentar con el nombre del user del hook (más confiable)
+      if (user?.name) {
+        console.log('✅ Nombre obtenido del user hook:', user.name);
+        return user.name;
+      }
+
+      // Si no, buscar en la base de datos por ID de usuario
+      if (user?.id) {
+        const { data: usuarioData, error } = await supabase
+          .from('usuarios')
+          .select('nombre')
+          .eq('id', user.id)
+          .single();
+
+        if (!error && usuarioData?.nombre) {
+          console.log('✅ Nombre obtenido de BD por ID:', usuarioData.nombre);
+          return usuarioData.nombre;
+        }
+      }
+
+      // Buscar por email si está disponible
+      if (user?.email) {
+        const { data: usuarioData, error } = await supabase
+          .from('usuarios')
+          .select('nombre')
+          .eq('celular', user.email.split('@')[0]) // El email puede ser celular@tienda.com
+          .single();
+
+        if (!error && usuarioData?.nombre) {
+          console.log('✅ Nombre obtenido de BD por celular:', usuarioData.nombre);
+          return usuarioData.nombre;
+        }
+      }
+
+      // Fallback: generar nombre descriptivo
+      const fallbackName = user?.email?.split('@')[0] || user?.name || 'Auditor';
+      console.log('⚠️ Usando nombre fallback:', fallbackName);
+      return fallbackName.charAt(0).toUpperCase() + fallbackName.slice(1);
+    } catch (error) {
+      console.error('❌ Error obteniendo nombre del auditor:', error);
+      return 'Sistema de Auditorías';
+    }
+  };
+
+  // Función auxiliar para obtener el nombre de la tienda
+  const obtenerNombreTienda = async (idTienda: number): Promise<string> => {
+    try {
+      console.log('🏪 Obteniendo nombre de la tienda...', { 
+        idTienda, 
+        tiendaSeleccionada: tiendaSeleccionada?.nombre 
+      });
+
+      // Primero usar tiendaSeleccionada si está disponible
+      if (tiendaSeleccionada?.nombre) {
+        console.log('✅ Nombre obtenido de tiendaSeleccionada:', tiendaSeleccionada.nombre);
+        return tiendaSeleccionada.nombre;
+      }
+
+      // Si no, consultar directamente a la base de datos
+      const { data: tiendaData, error } = await supabase
+        .from('tiendas')
+        .select('nombre')
+        .eq('id_tienda', idTienda)
+        .single();
+
+      if (!error && tiendaData?.nombre) {
+        console.log('✅ Nombre obtenido de BD:', tiendaData.nombre);
+        return tiendaData.nombre;
+      }
+
+      console.warn('⚠️ No se encontró nombre de tienda:', { error, tiendaData });
+      return `Tienda #${idTienda}`;
+    } catch (error) {
+      console.error('❌ Error obteniendo nombre de la tienda:', error);
+      return `Tienda #${idTienda}`;
+    }
+  };
+
   // Función para notificar por email cuando se completa una auditoría
   const notificarAuditoriaCompletada = async (datosAuditoria: Auditoria) => {
     try {
@@ -495,7 +586,20 @@ const Auditoria = () => {
       
       // Obtener información adicional
       const resumen = calcularResumen();
-      const tiendaNombre = tiendaSeleccionada?.nombre || 'Tienda desconocida';
+      
+      // Obtener nombres reales del auditor y la tienda
+      const [nombreAuditor, nombreTienda] = await Promise.all([
+        obtenerNombreAuditor(),
+        obtenerNombreTienda(datosAuditoria.id_tienda)
+      ]);
+      
+      console.log('👤 Información del auditor y tienda:', {
+        auditor: nombreAuditor,
+        tienda: nombreTienda,
+        userEmail: user?.email,
+        auditoriaId: datosAuditoria.id_auditoria,
+        tiendaId: datosAuditoria.id_tienda
+      });
       
       // Obtener conteo de fotos usando tu servicio existente
       let totalFotos = 0;
@@ -506,22 +610,91 @@ const Auditoria = () => {
         console.warn('No se pudo obtener conteo de fotos:', error);
       }
 
-      // Preparar datos para el email
+      // Preparar resumen de categorías con porcentajes
+      console.log('📊 Procesando categorías para email:', categorias.map(c => c.nombre));
+      
+      const categoriasResumen: CategoriaResumen[] = categorias.map(categoria => {
+        const preguntasCategoria = categoria.subcategorias.flatMap(sub => sub.preguntas);
+        const preguntasAprobadas = preguntasCategoria.filter(p => {
+          const respuesta = respuestas.get(p.id_auditoria_pregunta);
+          return respuesta && respuesta.respuesta === true;
+        }).length;
+        const preguntasReprobadas = preguntasCategoria.filter(p => {
+          const respuesta = respuestas.get(p.id_auditoria_pregunta);
+          return respuesta && respuesta.respuesta === false;
+        }).length;
+        const totalPreguntas = preguntasCategoria.length;
+        const porcentaje = totalPreguntas > 0 ? (preguntasAprobadas / totalPreguntas) * 100 : 0;
+
+        const categoriaResumen = {
+          nombre: categoria.nombre,
+          peso: categoria.peso || 0,
+          calificacion: porcentaje,
+          porcentaje: porcentaje,
+          preguntas_total: totalPreguntas,
+          preguntas_aprobadas: preguntasAprobadas,
+          preguntas_reprobadas: preguntasReprobadas
+        };
+
+        console.log(`📈 Categoría procesada: ${categoria.nombre}`, categoriaResumen);
+        return categoriaResumen;
+      });
+
+      console.log('📋 Resumen completo de categorías:', categoriasResumen);
+
+      // Preparar resumen de fotos
+      let fotosResumen: FotoResumen[] = [];
+      try {
+        const { data: conteoFotos } = await obtenerConteoFotos(datosAuditoria.id_auditoria);
+        const tiposFotos = [
+          'Fachada', 'Campaña y promociones', 'General de la tienda por los lados',
+          'Punto de pago', 'Vestier', 'Implementos de aseo', 'Bodegas',
+          'Personal de la tienda', 'Libro verde y carpetas', 
+          'Cuaderno de seguimiento de pptos e informes de la marca'
+        ];
+        
+        fotosResumen = tiposFotos.map(tipo => ({
+          tipo,
+          cantidad: conteoFotos?.[tipo as keyof typeof conteoFotos] || 0
+        }));
+      } catch (error) {
+        console.warn('Error obteniendo resumen de fotos:', error);
+      }
+
+      // Preparar datos para el email con información detallada
       const datosEmail = {
         auditoria_id: datosAuditoria.id_auditoria,
-        tienda_nombre: tiendaNombre,
+        tienda_nombre: nombreTienda,
         fecha_auditoria: formatearFechaEmail(datosAuditoria.fecha || new Date()),
         calificacion_final: Math.round(resumen.calificacion_total_ponderada),
         to_email: '', // Se llenará para cada destinatario
-        sistema_url: `${window.location.origin}/auditoria/estadisticas`
+        sistema_url: `${window.location.origin}/auditoria/estadisticas`,
+        
+        // Información detallada
+        categorias: categoriasResumen,
+        fotos: fotosResumen,
+        comentarios_generales: notasPersonal || 'No se agregaron notas adicionales',
+        observaciones: conclusiones || 'No se agregaron observaciones',
+        total_preguntas: resumen.total_preguntas,
+        preguntas_aprobadas: resumen.preguntas_aprobadas,
+        preguntas_reprobadas: resumen.preguntas_reprobadas,
+        auditor: nombreAuditor,
+        
+        // Campos específicos de la base de datos
+        notas_personal: notasPersonal || datosAuditoria.notas_personal || 'No se registraron notas del personal.',
+        notas_campanas: notasCampanas || datosAuditoria.notas_campanas || 'No se registraron notas específicas sobre campañas.',
+        notas_conclusiones: conclusiones || datosAuditoria.notas_conclusiones || 'No se registraron conclusiones específicas.'
       };
 
       console.log('📊 Datos de la auditoría para notificar:', {
         id: datosEmail.auditoria_id,
         tienda: datosEmail.tienda_nombre,
+        auditor: datosEmail.auditor,
         calificacion: datosEmail.calificacion_final,
         totalFotos,
-        fecha: datosEmail.fecha_auditoria
+        fecha: datosEmail.fecha_auditoria,
+        categorias: categoriasResumen.length,
+        fotos: fotosResumen.length
       });
 
       // Obtener lista de destinatarios
@@ -584,7 +757,18 @@ const Auditoria = () => {
   // Función wrapper para finalizar auditoría con redirección
   const manejarFinalizarAuditoria = async () => {
     try {
-      const exito = await finalizarAuditoria();
+      console.log('💾 Finalizando auditoría con notas:', {
+        notasPersonal,
+        notasCampanas,
+        conclusiones
+      });
+      
+      const exito = await finalizarAuditoria(
+        conclusiones, // observacionesFinales
+        notasPersonal, // notasPersonal 
+        notasCampanas, // notasCampanas
+        conclusiones // conclusiones (también se usa como notas_conclusiones)
+      );
       if (exito && auditoriaActual) {
         console.log('🎉 Auditoría finalizada exitosamente');
         

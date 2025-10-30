@@ -404,7 +404,12 @@ export const useAudit = () => {
   };
 
   // Finalizar auditoría y calcular calificación final
-  const finalizarAuditoria = async (observacionesFinales?: string): Promise<boolean> => {
+  const finalizarAuditoria = async (
+    observacionesFinales?: string, 
+    notasPersonal?: string, 
+    notasCampanas?: string, 
+    conclusiones?: string
+  ): Promise<boolean> => {
     if (!auditoriaActual) {
       setError('No hay auditoría activa');
       return false;
@@ -415,19 +420,29 @@ export const useAudit = () => {
 
       const resumen = calcularResumen();
       
+      console.log('📝 Guardando notas de auditoría:', {
+        notas_personal: notasPersonal,
+        notas_campanas: notasCampanas,
+        notas_conclusiones: conclusiones,
+        observaciones: observacionesFinales
+      });
+      
       const { error } = await supabase
         .from('auditorias')
         .update({
           estado: 'completada',
           calificacion_total: resumen.calificacion_total_ponderada,
           observaciones: observacionesFinales || auditoriaActual.observaciones,
+          notas_personal: notasPersonal || auditoriaActual.notas_personal,
+          notas_campanas: notasCampanas || auditoriaActual.notas_campanas,
+          notas_conclusiones: conclusiones || auditoriaActual.notas_conclusiones,
           updated_at: new Date().toISOString()
         })
         .eq('id_auditoria', auditoriaActual.id_auditoria);
 
       if (error) throw error;
 
-      console.log('✅ Auditoría finalizada:', resumen.calificacion_total_ponderada + '%');
+      console.log('✅ Auditoría finalizada con todas las notas:', resumen.calificacion_total_ponderada + '%');
       
       setShowSuccessMessage(true);
       setTimeout(() => setShowSuccessMessage(false), 3000);

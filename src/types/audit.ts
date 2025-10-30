@@ -63,6 +63,10 @@ export interface Auditoria {
   estado: 'en_progreso' | 'completada' | 'revisada';
   created_at: string;
   updated_at: string;
+  // Campos de notas específicas
+  notas_personal?: string;
+  notas_campanas?: string;
+  notas_conclusiones?: string;
 }
 
 export interface AuditoriaPregunta {
