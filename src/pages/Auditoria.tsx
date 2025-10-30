@@ -9,7 +9,7 @@ import { useAuth } from '../hooks/useAuth';
 import { supabase } from '../supabaseClient';
 import type { Auditoria, Respuesta } from '../types/audit';
 import GestorFotos from '../components/GestorFotos';
-import { obtenerConteoFotos } from '../services/imageService';
+import { obtenerConteoFotos, obtenerFotosAuditoria, AuditoriaFoto } from '../services/imageService';
 import { 
   enviarNotificacionAuditoriaCompletada, 
   obtenerDestinatariosNotificacion,
@@ -700,23 +700,63 @@ const Auditoria = () => {
 
       console.log('📋 Resumen completo de categorías:', categoriasResumen);
 
-      // Preparar resumen de fotos
+      // Preparar resumen de fotos con URLs reales
       let fotosResumen: FotoResumen[] = [];
       try {
-        const { data: conteoFotos } = await obtenerConteoFotos(datosAuditoria.id_auditoria);
-        const tiposFotos = [
-          'Fachada', 'Campaña y promociones', 'General de la tienda por los lados',
-          'Punto de pago', 'Vestier', 'Implementos de aseo', 'Bodegas',
-          'Personal de la tienda', 'Libro verde y carpetas', 
-          'Cuaderno de seguimiento de pptos e informes de la marca'
-        ];
+        console.log('📷 Obteniendo fotos reales de la auditoría...');
+        const { success, data: fotosReales } = await obtenerFotosAuditoria(datosAuditoria.id_auditoria);
         
-        fotosResumen = tiposFotos.map(tipo => ({
-          tipo,
-          cantidad: conteoFotos?.[tipo as keyof typeof conteoFotos] || 0
-        }));
+        if (success && fotosReales) {
+          console.log(`📸 Se encontraron ${fotosReales.length} fotos en total`);
+          
+          // Agrupar fotos por tipo
+          const fotosPorTipo: { [key: string]: AuditoriaFoto[] } = {};
+          fotosReales.forEach(foto => {
+            if (!fotosPorTipo[foto.tipo_foto]) {
+              fotosPorTipo[foto.tipo_foto] = [];
+            }
+            fotosPorTipo[foto.tipo_foto].push(foto);
+          });
+
+          const tiposFotos = [
+            'Fachada', 'Campaña y promociones', 'General de la tienda por los lados',
+            'Punto de pago', 'Vestier', 'Implementos de aseo', 'Bodegas',
+            'Personal de la tienda', 'Libro verde y carpetas', 
+            'Cuaderno de seguimiento de pptos e informes de la marca'
+          ];
+          
+          fotosResumen = tiposFotos.map(tipo => {
+            const fotosDelTipo = fotosPorTipo[tipo] || [];
+            const urls = fotosDelTipo.map(foto => foto.url_foto);
+            
+            console.log(`📷 ${tipo}: ${fotosDelTipo.length} fotos`, urls.length > 0 ? 'con URLs' : 'sin URLs');
+            
+            return {
+              tipo,
+              cantidad: fotosDelTipo.length,
+              urls: urls.length > 0 ? urls : undefined
+            };
+          });
+        }
       } catch (error) {
-        console.warn('Error obteniendo resumen de fotos:', error);
+        console.warn('Error obteniendo fotos reales:', error);
+        // Fallback al método anterior si falla
+        try {
+          const { data: conteoFotos } = await obtenerConteoFotos(datosAuditoria.id_auditoria);
+          const tiposFotos = [
+            'Fachada', 'Campaña y promociones', 'General de la tienda por los lados',
+            'Punto de pago', 'Vestier', 'Implementos de aseo', 'Bodegas',
+            'Personal de la tienda', 'Libro verde y carpetas', 
+            'Cuaderno de seguimiento de pptos e informes de la marca'
+          ];
+          
+          fotosResumen = tiposFotos.map(tipo => ({
+            tipo,
+            cantidad: conteoFotos?.[tipo as keyof typeof conteoFotos] || 0
+          }));
+        } catch (fallbackError) {
+          console.warn('Error en fallback de fotos:', fallbackError);
+        }
       }
 
       // Preparar datos para el email con información detallada

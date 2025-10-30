@@ -397,15 +397,42 @@ const generarHTMLFotos = (fotos: FotoResumen[]): string => {
     const fotosHTML = fotos.map((foto, index) => {
       const tipo = foto?.tipo || `Tipo ${index + 1}`;
       const cantidad = foto?.cantidad || 0;
+      const urls = foto?.urls || [];
       const colorFondo = cantidad > 0 ? '#dcfce7' : '#fee2e2';
       const colorTexto = cantidad > 0 ? '#15803d' : '#dc2626';
       const icono = cantidad > 0 ? '✅' : '❌';
       
-      console.log(`🖼️ Procesando tipo de foto ${index + 1}: ${tipo} - ${cantidad} foto(s)`);
+      console.log(`🖼️ Procesando tipo de foto ${index + 1}: ${tipo} - ${cantidad} foto(s) - URLs: ${urls.length}`);
+      
+      // Generar galería de imágenes si hay URLs
+      let galeriaHTML = '';
+      if (urls.length > 0) {
+        const imagenesHTML = urls.map((url, imgIndex) => `
+          <div style="display: inline-block; margin: 5px; border-radius: 6px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+            <a href="${url}" target="_blank" style="text-decoration: none;">
+              <img src="${url}" 
+                   alt="Foto ${imgIndex + 1} - ${tipo}" 
+                   style="width: 120px; height: 120px; object-fit: cover; display: block; transition: transform 0.2s;"
+                   onmouseover="this.style.transform='scale(1.05)'"
+                   onmouseout="this.style.transform='scale(1)'">
+            </a>
+          </div>
+        `).join('');
+        
+        galeriaHTML = `
+          <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid #e5e7eb;">
+            <p style="margin: 0 0 8px 0; font-size: 12px; color: #6b7280; font-weight: 500;">📷 Galería (click para ampliar):</p>
+            <div style="text-align: left;">
+              ${imagenesHTML}
+            </div>
+          </div>
+        `;
+      }
       
       return `
-        <div style="background: ${colorFondo}; border-radius: 8px; padding: 15px; margin-bottom: 10px; border-left: 4px solid ${colorTexto};">
-          <div style="display: flex; justify-content: space-between; align-items: center;">
+        <div style="background: ${colorFondo}; border-radius: 8px; padding: 15px; margin-bottom: 15px; border-left: 4px solid ${colorTexto};">
+          <!-- Header con información del tipo -->
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: ${urls.length > 0 ? '0' : '0'};">
             <div>
               <p style="margin: 0; font-weight: 600; color: #1f2937; font-size: 14px;">📷 ${tipo}</p>
             </div>
@@ -414,6 +441,9 @@ const generarHTMLFotos = (fotos: FotoResumen[]): string => {
               <span style="color: #6b7280; font-size: 12px; margin-left: 5px;">foto${cantidad !== 1 ? 's' : ''}</span>
             </div>
           </div>
+          
+          <!-- Galería de imágenes -->
+          ${galeriaHTML}
         </div>
       `;
     }).join('');
