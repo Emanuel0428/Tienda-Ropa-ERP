@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Button } from './ui/Button';
 import { Card } from './ui/Card';
 import { 
@@ -164,8 +164,17 @@ const GestorFotos: React.FC<GestorFotosProps> = ({ idAuditoria, readonly = false
     tipoFoto, 
     onFileSelect 
   }) => {
+    const cameraInputRef = useRef<HTMLInputElement>(null);
+    const galleryInputRef = useRef<HTMLInputElement>(null);
+
     const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
+      
+      console.log('📱 Evento de cambio de archivo:', {
+        hasFile: !!file,
+        inputId: e.target.id,
+        tipoFoto: tipoFoto
+      });
       
       if (!file) {
         console.log('📱 No se seleccionó archivo');
@@ -210,28 +219,55 @@ const GestorFotos: React.FC<GestorFotosProps> = ({ idAuditoria, readonly = false
       e.target.value = '';
     };
 
+    // Funciones para activar los inputs
+    const activarCamara = () => {
+      console.log('📱 Activando cámara para:', tipoFoto);
+      if (cameraInputRef.current) {
+        cameraInputRef.current.click();
+      } else {
+        console.error('📱 Referencia de cámara no encontrada');
+      }
+    };
+
+    const activarGaleria = () => {
+      console.log('📱 Activando galería para:', tipoFoto);
+      if (galleryInputRef.current) {
+        galleryInputRef.current.click();
+      } else {
+        console.error('📱 Referencia de galería no encontrada');
+      }
+    };
+
     return (
       <>
         {/* Input para cámara (solo iOS) */}
         <input
+          ref={cameraInputRef}
           type="file"
           accept="image/*,image/heic,image/heif"
           capture="environment"
           onChange={handleFileChange}
           style={{ display: 'none' }}
-          id={`camera-input-${tipoFoto.replace(/\s+/g, '-')}`}
+          id={`camera-input-${tipoFoto.replace(/\s+/g, '-').toLowerCase()}`}
           multiple={false}
         />
         
         {/* Input para galería */}
         <input
+          ref={galleryInputRef}
           type="file"
           accept="image/*,image/heic,image/heif"
           onChange={handleFileChange}
           style={{ display: 'none' }}
-          id={`gallery-input-${tipoFoto.replace(/\s+/g, '-')}`}
+          id={`gallery-input-${tipoFoto.replace(/\s+/g, '-').toLowerCase()}`}
           multiple={false}
         />
+
+        {/* Exponer funciones para uso externo */}
+        <div style={{ display: 'none' }}>
+          <button onClick={activarCamara} id={`btn-camera-${tipoFoto.replace(/\s+/g, '-').toLowerCase()}`} />
+          <button onClick={activarGaleria} id={`btn-gallery-${tipoFoto.replace(/\s+/g, '-').toLowerCase()}`} />
+        </div>
       </>
     );
   };
@@ -334,8 +370,13 @@ const GestorFotos: React.FC<GestorFotosProps> = ({ idAuditoria, readonly = false
                               variant="primary"
                               className="text-xs px-2 py-1"
                               onClick={() => {
-                                const input = document.getElementById(`camera-input-${tipo.replace(/\s+/g, '-')}`) as HTMLInputElement;
-                                input?.click();
+                                console.log('📱 Click en botón cámara para:', tipo);
+                                const btn = document.getElementById(`btn-camera-${tipo.replace(/\s+/g, '-').toLowerCase()}`) as HTMLButtonElement;
+                                if (btn) {
+                                  btn.click();
+                                } else {
+                                  console.error('📱 Botón cámara no encontrado para:', tipo);
+                                }
                               }}
                               disabled={estaSubiendo}
                             >
@@ -345,8 +386,13 @@ const GestorFotos: React.FC<GestorFotosProps> = ({ idAuditoria, readonly = false
                               variant="secondary"
                               className="text-xs px-2 py-1"
                               onClick={() => {
-                                const input = document.getElementById(`gallery-input-${tipo.replace(/\s+/g, '-')}`) as HTMLInputElement;
-                                input?.click();
+                                console.log('📱 Click en botón galería para:', tipo);
+                                const btn = document.getElementById(`btn-gallery-${tipo.replace(/\s+/g, '-').toLowerCase()}`) as HTMLButtonElement;
+                                if (btn) {
+                                  btn.click();
+                                } else {
+                                  console.error('📱 Botón galería no encontrado para:', tipo);
+                                }
                               }}
                               disabled={estaSubiendo}
                             >
@@ -358,8 +404,13 @@ const GestorFotos: React.FC<GestorFotosProps> = ({ idAuditoria, readonly = false
                             variant="primary"
                             className="text-xs px-2 py-1"
                             onClick={() => {
-                              const input = document.getElementById(`gallery-input-${tipo.replace(/\s+/g, '-')}`) as HTMLInputElement;
-                              input?.click();
+                              console.log('📱 Click en botón subir para:', tipo);
+                              const btn = document.getElementById(`btn-gallery-${tipo.replace(/\s+/g, '-').toLowerCase()}`) as HTMLButtonElement;
+                              if (btn) {
+                                btn.click();
+                              } else {
+                                console.error('📱 Botón subir no encontrado para:', tipo);
+                              }
                             }}
                             disabled={estaSubiendo}
                           >
