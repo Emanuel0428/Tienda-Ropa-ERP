@@ -471,25 +471,37 @@ const GestorFotos: React.FC<GestorFotosProps> = ({ idAuditoria, readonly = false
                       }}
                     />
                     
-                    {/* Overlay con información y botones */}
+                    {/* Botón de eliminar fijo en móviles, hover en desktop */}
+                    {!readonly && (
+                      <button
+                        className="absolute top-2 right-2 bg-red-500 hover:bg-red-600 text-white rounded-full w-8 h-8 flex items-center justify-center text-sm font-bold shadow-lg transition-all touch-manipulation opacity-80 sm:opacity-0 sm:group-hover:opacity-100 z-10"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (confirm('¿Está seguro de que desea eliminar esta foto?')) {
+                            handleEliminarFoto(foto);
+                          }
+                        }}
+                        title="Eliminar foto"
+                      >
+                        🗑️
+                      </button>
+                    )}
+
+                    {/* Overlay con información */}
                     <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-20 transition-all duration-200 flex items-end">
                       <div className="w-full p-3 bg-gradient-to-t from-black to-transparent text-white opacity-0 group-hover:opacity-100 transition-opacity duration-200">
                         <div className="flex items-center justify-between">
                           <div className="text-xs">
-                            {new Date(foto.created_at).toLocaleString()}
+                            📅 {new Date(foto.created_at).toLocaleString('es-ES', {
+                              month: 'short',
+                              day: 'numeric',
+                              hour: '2-digit',
+                              minute: '2-digit'
+                            })}
                           </div>
-                          {!readonly && (
-                            <Button
-                              variant="secondary"
-                              className="text-xs px-2 py-1 bg-red-500 text-white hover:bg-red-600 border-none"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleEliminarFoto(foto);
-                              }}
-                            >
-                              🗑️
-                            </Button>
-                          )}
+                          <div className="text-xs">
+                            👁️ Ver foto
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -522,12 +534,95 @@ const GestorFotos: React.FC<GestorFotosProps> = ({ idAuditoria, readonly = false
               className="max-w-full max-h-full object-contain rounded"
               onClick={(e) => e.stopPropagation()}
             />
-            <button
-              className="absolute top-2 right-2 text-white text-2xl font-bold bg-black bg-opacity-50 rounded-full w-8 h-8 flex items-center justify-center hover:bg-opacity-75 transition-all"
-              onClick={() => setFotoModalAbierta(null)}
-            >
-              ×
-            </button>
+            
+            {/* Botones de acción en la imagen */}
+            <div className="absolute top-2 right-2 flex gap-2">
+              {!readonly && (() => {
+                const fotoActual = fotosViendo.find(f => f.url_foto === fotoModalAbierta);
+                return fotoActual ? (
+                  <button
+                    className="text-white text-sm font-semibold bg-red-500 hover:bg-red-600 rounded-lg px-3 py-2 flex items-center gap-2 transition-all shadow-lg touch-manipulation"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (confirm('¿Está seguro de que desea eliminar esta foto?')) {
+                        handleEliminarFoto(fotoActual);
+                        setFotoModalAbierta(null);
+                      }
+                    }}
+                  >
+                    🗑️ Eliminar
+                  </button>
+                ) : null;
+              })()}
+              
+              <button
+                className="text-white text-2xl font-bold bg-black bg-opacity-50 hover:bg-opacity-75 rounded-full w-10 h-10 flex items-center justify-center transition-all touch-manipulation"
+                onClick={() => setFotoModalAbierta(null)}
+              >
+                ×
+              </button>
+            </div>
+
+            {/* Información de la foto */}
+            {(() => {
+              const fotoActual = fotosViendo.find(f => f.url_foto === fotoModalAbierta);
+              return fotoActual ? (
+                <div className="absolute bottom-4 left-4 right-4 bg-black bg-opacity-60 text-white rounded-lg p-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                    <div>
+                      <p className="font-semibold text-sm sm:text-base">{fotoActual.tipo_foto}</p>
+                      <p className="text-xs sm:text-sm opacity-80">
+                        📅 {new Date(fotoActual.created_at).toLocaleString('es-ES', {
+                          year: 'numeric',
+                          month: 'long', 
+                          day: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit'
+                        })}
+                      </p>
+                    </div>
+                    <div className="text-xs opacity-80">
+                      📸 Foto {fotosViendo.findIndex(f => f.url_foto === fotoModalAbierta) + 1} de {fotosViendo.length}
+                    </div>
+                  </div>
+                </div>
+              ) : null;
+            })()}
+
+            {/* Navegación entre fotos */}
+            {fotosViendo.length > 1 && (() => {
+              const currentIndex = fotosViendo.findIndex(f => f.url_foto === fotoModalAbierta);
+              const hasNext = currentIndex < fotosViendo.length - 1;
+              const hasPrev = currentIndex > 0;
+
+              return (
+                <>
+                  {hasPrev && (
+                    <button
+                      className="absolute left-2 top-1/2 transform -translate-y-1/2 text-white text-2xl font-bold bg-black bg-opacity-50 hover:bg-opacity-75 rounded-full w-12 h-12 flex items-center justify-center transition-all touch-manipulation"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setFotoModalAbierta(fotosViendo[currentIndex - 1].url_foto);
+                      }}
+                    >
+                      ←
+                    </button>
+                  )}
+                  
+                  {hasNext && (
+                    <button
+                      className="absolute right-2 top-1/2 transform -translate-y-1/2 text-white text-2xl font-bold bg-black bg-opacity-50 hover:bg-opacity-75 rounded-full w-12 h-12 flex items-center justify-center transition-all touch-manipulation"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setFotoModalAbierta(fotosViendo[currentIndex + 1].url_foto);
+                      }}
+                    >
+                      →
+                    </button>
+                  )}
+                </>
+              );
+            })()}
           </div>
         </div>
       )}

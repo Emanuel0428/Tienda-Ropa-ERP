@@ -1,3 +1,60 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Mejoras para experiencia móvil */
+@layer utilities {
+  .touch-manipulation {
+    touch-action: manipulation;
+  }
+  
+  /* Mejor área de toque para botones pequeños */
+  .touch-target {
+    min-width: 44px;
+    min-height: 44px;
+  }
+  
+  /* Scroll más suave en iOS */
+  .smooth-scroll {
+    -webkit-overflow-scrolling: touch;
+  }
+  
+  /* Mejora la legibilidad del texto en móvil */
+  .mobile-text {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  
+  /* Evita el zoom en inputs en iOS */
+  .no-zoom {
+    font-size: 16px;
+  }
+}
+
+/* Estilos específicos para móviles */
+@media (max-width: 640px) {
+  /* Hace que los inputs sean más fáciles de tocar */
+  input, textarea, select {
+    @apply no-zoom touch-manipulation;
+    min-height: 44px;
+  }
+  
+  /* Mejora el espaciado entre elementos interactivos */
+  button, .clickable {
+    @apply touch-target touch-manipulation;
+  }
+  
+  /* Reduce el padding excesivo en tarjetas */
+  .card-mobile {
+    @apply p-3;
+  }
+  
+  /* Mejora la navegación sticky */
+  .sticky-nav {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: white;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  }
+}
