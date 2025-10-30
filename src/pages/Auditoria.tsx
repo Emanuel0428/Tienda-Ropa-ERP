@@ -92,6 +92,34 @@ const Auditoria = () => {
 
   // Estados para modal de confirmación de finalizar
   const [showConfirmFinalizarModal, setShowConfirmFinalizarModal] = useState(false);
+
+  // Función para guardar automáticamente las notas
+  const guardarNotasAutomaticamente = async () => {
+    if (!auditoriaActual) return;
+
+    try {
+      console.log('💾 Guardando notas automáticamente:', {
+        notas_personal: notasPersonal,
+        notas_campanas: notasCampanas,
+        notas_conclusiones: conclusiones
+      });
+
+      const { error } = await supabase
+        .from('auditorias')
+        .update({
+          notas_personal: notasPersonal,
+          notas_campanas: notasCampanas,
+          notas_conclusiones: conclusiones,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id_auditoria', auditoriaActual.id_auditoria);
+
+      if (error) throw error;
+      console.log('✅ Notas guardadas automáticamente');
+    } catch (error) {
+      console.error('❌ Error guardando notas:', error);
+    }
+  };
   const [preguntasSinResponder, setPreguntasSinResponder] = useState<Array<{categoria: string, subcategoria: string, pregunta: string, id_auditoria_pregunta: number}>>([]);
   const [fotosFaltantes, setFotosFaltantes] = useState<string[]>([]);
 
@@ -108,6 +136,36 @@ const Auditoria = () => {
   useEffect(() => {
     cargarTiendasDisponibles();
   }, []);
+
+  // Cargar notas específicas cuando se carga una auditoría existente
+  useEffect(() => {
+    if (auditoriaActual && modoRevision) {
+      console.log('📝 Cargando notas de auditoría existente:', {
+        notas_personal: auditoriaActual.notas_personal,
+        notas_campanas: auditoriaActual.notas_campanas,
+        notas_conclusiones: auditoriaActual.notas_conclusiones
+      });
+
+      setNotasPersonal(auditoriaActual.notas_personal || '');
+      setNotasCampanas(auditoriaActual.notas_campanas || '');
+      setConclusiones(auditoriaActual.notas_conclusiones || '');
+    }
+  }, [auditoriaActual, modoRevision]);
+
+  // Guardar notas automáticamente cuando cambien (con debounce)
+  useEffect(() => {
+    if (!auditoriaActual || isLoading) return;
+
+    // Solo guardar si hay contenido y no estamos en el proceso inicial de carga
+    const hayContenido = notasPersonal.trim() || notasCampanas.trim() || conclusiones.trim();
+    if (!hayContenido) return;
+
+    const timeoutId = setTimeout(() => {
+      guardarNotasAutomaticamente();
+    }, 2000); // Esperar 2 segundos después del último cambio
+
+    return () => clearTimeout(timeoutId);
+  }, [notasPersonal, notasCampanas, conclusiones, auditoriaActual, isLoading]);
 
   // Manejar parámetros URL para cargar auditoría específica
   useEffect(() => {
