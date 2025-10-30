@@ -9,6 +9,11 @@ import { supabase } from '../supabaseClient';
 import type { Auditoria, Respuesta } from '../types/audit';
 import GestorFotos from '../components/GestorFotos';
 import { obtenerConteoFotos } from '../services/imageService';
+import { 
+  enviarNotificacionAuditoriaCompletada, 
+  obtenerDestinatariosNotificacion,
+  formatearFechaEmail 
+} from '../services/emailService';
 
 const Auditoria = () => {
   const navigate = useNavigate();
@@ -82,6 +87,7 @@ const Auditoria = () => {
   // Estados para modal de confirmación de finalizar
   const [showConfirmFinalizarModal, setShowConfirmFinalizarModal] = useState(false);
   const [preguntasSinResponder, setPreguntasSinResponder] = useState<Array<{categoria: string, subcategoria: string, pregunta: string, id_auditoria_pregunta: number}>>([]);
+  const [fotosFaltantes, setFotosFaltantes] = useState<string[]>([]);
 
   // Estados para edición de preguntas
   const [modoEdicionPreguntas, setModoEdicionPreguntas] = useState<{[key: number]: boolean}>({});
@@ -482,10 +488,10 @@ const Auditoria = () => {
     }
   };
 
-  // Función para notificar a n8n cuando se completa una auditoría
+  // Función para notificar por email cuando se completa una auditoría
   const notificarAuditoriaCompletada = async (datosAuditoria: Auditoria) => {
     try {
-      console.log('📧 Enviando notificación a n8n...');
+      console.log('📧 Enviando notificaciones de auditoría completada...');
       
       // Obtener información adicional
       const resumen = calcularResumen();
@@ -499,45 +505,79 @@ const Auditoria = () => {
       } catch (error) {
         console.warn('No se pudo obtener conteo de fotos:', error);
       }
-      
-      const payload = {
+
+      // Preparar datos para el email
+      const datosEmail = {
         auditoria_id: datosAuditoria.id_auditoria,
-        tienda: tiendaNombre,
-        calificacion: Math.round(resumen.calificacion_total_ponderada),
-        fecha: new Date().toLocaleDateString('es-ES'),
-        auditor: 'Sistema Auditorías', // Puedes cambiarlo por el usuario actual
-        estado: 'completada',
-        total_preguntas: resumen.total_preguntas,
-        preguntas_aprobadas: resumen.preguntas_aprobadas,
-        preguntas_reprobadas: resumen.preguntas_reprobadas,
-        total_fotos: totalFotos,
-        timestamp: new Date().toISOString(),
-        // Agregar información de categorías
-        categorias: categorias.map(cat => ({
-          nombre: cat.nombre,
-          peso: cat.peso || 0,
-        }))
+        tienda_nombre: tiendaNombre,
+        fecha_auditoria: formatearFechaEmail(datosAuditoria.fecha || new Date()),
+        calificacion_final: Math.round(resumen.calificacion_total_ponderada),
+        to_email: '', // Se llenará para cada destinatario
+        sistema_url: `${window.location.origin}/auditoria/estadisticas`
       };
 
-      const response = await fetch('/api/n8n/webhook-test/auditoria-completada', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload)
+      console.log('📊 Datos de la auditoría para notificar:', {
+        id: datosEmail.auditoria_id,
+        tienda: datosEmail.tienda_nombre,
+        calificacion: datosEmail.calificacion_final,
+        totalFotos,
+        fecha: datosEmail.fecha_auditoria
       });
 
-      if (response.ok) {
-        console.log('✅ Notificación enviada exitosamente a n8n');
-        // Opcional: mostrar toast de éxito
-        setShowSuccessMessage(true);
-        setTimeout(() => setShowSuccessMessage(false), 3000);
-      } else {
-        console.error('❌ Error enviando notificación a n8n:', response.status);
+      // Obtener lista de destinatarios
+      const destinatarios = obtenerDestinatariosNotificacion();
+      
+      if (destinatarios.length === 0) {
+        console.warn('⚠️ No hay destinatarios configurados para notificaciones');
+        return;
       }
+
+      console.log('📮 Enviando notificaciones a:', destinatarios);
+
+      // Enviar notificación al primer destinatario (principal)
+      const emailPrincipal = destinatarios[0];
+      const resultado = await enviarNotificacionAuditoriaCompletada({
+        ...datosEmail,
+        to_email: emailPrincipal
+      });
+
+      if (resultado.success) {
+        console.log('✅ Notificación enviada exitosamente a:', emailPrincipal);
+        
+        // Mostrar mensaje de éxito
+        setShowSuccessMessage(true);
+        setTimeout(() => setShowSuccessMessage(false), 4000);
+
+        // Si hay más destinatarios, enviar a ellos también (opcional)
+        if (destinatarios.length > 1) {
+          console.log('📧 Enviando a destinatarios adicionales...');
+          
+          // Enviar a los demás destinatarios de forma asíncrona
+          const destinatariosAdicionales = destinatarios.slice(1);
+          destinatariosAdicionales.forEach(async (email) => {
+            try {
+              await enviarNotificacionAuditoriaCompletada({
+                ...datosEmail,
+                to_email: email
+              });
+              console.log('✅ Notificación adicional enviada a:', email);
+            } catch (error) {
+              console.error('❌ Error enviando a destinatario adicional:', email, error);
+            }
+          });
+        }
+
+      } else {
+        console.error('❌ Error enviando notificación principal:', resultado.error);
+        
+        // Mostrar error al usuario pero no bloquear el flujo
+        console.warn('⚠️ La auditoría se completó pero hubo un error enviando la notificación por email');
+      }
+
     } catch (error) {
-      console.error('❌ Error conectando con n8n:', error);
+      console.error('❌ Error general enviando notificaciones:', error);
       // No fallar la finalización por error de notificación
+      console.warn('⚠️ La auditoría se completó correctamente, pero no se pudo enviar la notificación por email');
     }
   };
 
@@ -566,7 +606,13 @@ const Auditoria = () => {
   const manejarFinalizarAuditoriaConValidacion = async () => {
     if (!auditoriaActual) return;
 
-    // Verificar preguntas sin responder
+    console.log('🔍 Iniciando proceso de finalización...', {
+      auditoriaId: auditoriaActual.id_auditoria,
+      estado: auditoriaActual.estado,
+      modoRevision
+    });
+
+    // SIEMPRE verificar preguntas pendientes para mostrar resumen
     const preguntasSinResponder = [];
     
     for (const categoria of categorias) {
@@ -585,14 +631,43 @@ const Auditoria = () => {
       }
     }
 
-    // Si hay preguntas sin responder, mostrar modal de confirmación
-    if (preguntasSinResponder.length > 0) {
+    // Verificar fotos faltantes por tipo
+    let fotosFaltantes: string[] = [];
+    try {
+      const { data: conteoFotos } = await obtenerConteoFotos(auditoriaActual.id_auditoria);
+      const TIPOS_FOTOS_REQUERIDOS = [
+        'Fachada',
+        'Campaña y promociones', 
+        'General de la tienda por los lados',
+        'Punto de pago',
+        'Vestier'
+      ] as const;
+      
+      fotosFaltantes = TIPOS_FOTOS_REQUERIDOS.filter(tipo => {
+        const cantidad = conteoFotos?.[tipo as keyof typeof conteoFotos] || 0;
+        return cantidad === 0;
+      });
+    } catch (error) {
+      console.warn('No se pudo verificar fotos:', error);
+    }
+
+    console.log('📊 Resumen de auditoría:', {
+      preguntasSinResponder: preguntasSinResponder.length,
+      fotosFaltantes: fotosFaltantes.length,
+      tiposFotosFaltantes: fotosFaltantes
+    });
+
+    // Si hay preguntas sin responder O fotos faltantes, mostrar modal informativo
+    if (preguntasSinResponder.length > 0 || fotosFaltantes.length > 0) {
+      console.log('⚠️ Mostrando modal de confirmación con resumen de pendientes');
       setPreguntasSinResponder(preguntasSinResponder);
+      setFotosFaltantes(fotosFaltantes);
       setShowConfirmFinalizarModal(true);
       return; // Esperar respuesta del usuario en el modal
     }
 
-    // Proceder con la finalización (no hay preguntas pendientes)
+    // Proceder con la finalización (todo completo)
+    console.log('✅ Auditoría completa, finalizando...');
     await manejarFinalizarAuditoria();
   };
 
@@ -600,6 +675,7 @@ const Auditoria = () => {
   const confirmarFinalizacionConPendientes = async () => {
     setShowConfirmFinalizarModal(false);
     setPreguntasSinResponder([]);
+    setFotosFaltantes([]);
     await manejarFinalizarAuditoria();
   };
 
@@ -607,6 +683,7 @@ const Auditoria = () => {
   const cancelarFinalizacion = () => {
     setShowConfirmFinalizarModal(false);
     setPreguntasSinResponder([]);
+    setFotosFaltantes([]);
   };
 
   // Navegar a una pregunta específica
@@ -1515,19 +1592,62 @@ const Auditoria = () => {
           )}
           {currentStep === 4 && auditoriaActual && (
             <div className="space-y-6">
-              <div className="flex justify-between items-center">
+              <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
                 <h2 className="text-2xl font-bold text-gray-800">
                   📝 Notas y Conclusiones
                   <span className="ml-2 text-lg font-normal text-gray-600">
                     (ID: {auditoriaActual.id_auditoria})
                   </span>
                 </h2>
+                
+                {/* Indicador de estado de la auditoría */}
+                <div className="flex items-center gap-2">
+                  <Badge 
+                    variant={
+                      auditoriaActual.estado === 'completada' ? 'default' :
+                      auditoriaActual.estado === 'revisada' ? 'default' :
+                      'default'
+                    }
+                  >
+                    {auditoriaActual.estado === 'completada' ? '✅ Completada' :
+                     auditoriaActual.estado === 'revisada' ? '🔒 Revisada' :
+                     '🔄 En Progreso'}
+                  </Badge>
+                  {modoRevision && (
+                    <Badge variant="default">
+                      👁️ Modo Revisión
+                    </Badge>
+                  )}
+                </div>
               </div>
               
               {/* Sección de Notas y Conclusiones */}
               <Card>
-                <div className="bg-gradient-to-r from-purple-500 to-purple-600 text-white p-4">
-                  <h3 className="text-xl font-bold">📋 Completa la auditoría</h3>
+                <div className={`text-white p-4 ${
+                  auditoriaActual.estado === 'completada' ? 'bg-gradient-to-r from-green-500 to-green-600' :
+                  auditoriaActual.estado === 'revisada' ? 'bg-gradient-to-r from-blue-500 to-blue-600' :
+                  'bg-gradient-to-r from-purple-500 to-purple-600'
+                }`}>
+                  <h3 className="text-xl font-bold">
+                    {auditoriaActual.estado === 'completada' ? '✅ Auditoría Completada' :
+                     auditoriaActual.estado === 'revisada' ? '� Auditoría Revisada' :
+                     '�📋 Completa la auditoría'}
+                  </h3>
+                  {auditoriaActual.estado === 'completada' && (
+                    <p className="text-sm opacity-90 mt-1">
+                      Esta auditoría ha sido finalizada. Puedes re-finalizarla para enviar nuevas notificaciones.
+                    </p>
+                  )}
+                  {auditoriaActual.estado === 'revisada' && (
+                    <p className="text-sm opacity-90 mt-1">
+                      Esta auditoría ha sido revisada. Puedes finalizarla nuevamente si es necesario.
+                    </p>
+                  )}
+                  {auditoriaActual.estado === 'en_progreso' && (
+                    <p className="text-sm opacity-90 mt-1">
+                      Completa las notas y conclusiones, luego finaliza la auditoría.
+                    </p>
+                  )}
                 </div>
                 
                 <div className="p-6 space-y-6">
@@ -1589,17 +1709,21 @@ const Auditoria = () => {
                       📋 Ver Resumen
                     </Button>
                     
-                    {!modoRevision && (
-                      <Button 
-                        onClick={manejarFinalizarAuditoria}
-                        variant="primary"
-                        disabled={isSaving}
-                        className="px-6 py-3 text-lg"
-                      >
-                        {isSaving ? 'Finalizando...' : '✅ Finalizar Auditoría'}
-                      </Button>
-                    )}
+                    {/* Botón de Finalizar - siempre visible y funcional */}
+                    <Button 
+                      onClick={manejarFinalizarAuditoriaConValidacion}
+                      variant="primary"
+                      disabled={isSaving}
+                      className="px-6 py-3 text-lg"
+                    >
+                      {isSaving ? 'Finalizando...' : 
+                       auditoriaActual?.estado === 'completada' ? '✅ Re-finalizar Auditoría' : 
+                       auditoriaActual?.estado === 'revisada' ? '� Finalizar Nuevamente' : 
+                       '✅ Finalizar Auditoría'
+                      }
+                    </Button>
                     
+                    {/* Botón de Guardar Cambios para modo edición */}
                     {modoRevision && modoEdicion && cambiosPendientes && (
                       <Button 
                         onClick={actualizarAuditoria}
@@ -1631,10 +1755,15 @@ const Auditoria = () => {
       <Modal
         isOpen={showConfirmFinalizarModal}
         onClose={cancelarFinalizacion}
-        title="⚠️ Preguntas Sin Responder"
+        title={
+          preguntasSinResponder.length === 0 && fotosFaltantes.length === 0 
+            ? "✅ Confirmar Finalización" 
+            : "⚠️ Revisar Antes de Finalizar"
+        }
         size="lg"
       >
         <div className="p-6 space-y-6">
+          {/* Resumen de pendientes */}
           <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
             <div className="flex items-start">
               <div className="flex-shrink-0">
@@ -1644,15 +1773,46 @@ const Auditoria = () => {
               </div>
               <div className="ml-3">
                 <h3 className="text-lg font-medium text-yellow-800 mb-2">
-                  Hay {preguntasSinResponder.length} pregunta(s) sin responder
+                  Resumen antes de finalizar
                 </h3>
-                <p className="text-yellow-700">
-                  Las preguntas sin responder se considerarán como <strong>NO APROBADAS</strong> y 
-                  afectarán la calificación final de la auditoría.
-                </p>
+                <div className="space-y-1">
+                  {preguntasSinResponder.length > 0 && (
+                    <p className="text-yellow-700">
+                      📝 <strong>{preguntasSinResponder.length} pregunta(s)</strong> sin responder (se considerarán NO APROBADAS)
+                    </p>
+                  )}
+                  {fotosFaltantes.length > 0 && (
+                    <p className="text-yellow-700">
+                      📸 <strong>{fotosFaltantes.length} tipo(s) de foto</strong> sin subir
+                    </p>
+                  )}
+                  {preguntasSinResponder.length === 0 && fotosFaltantes.length === 0 && (
+                    <p className="text-green-700">
+                      ✅ <strong>¡Auditoría completa!</strong> Todas las preguntas respondidas y fotos cargadas.
+                    </p>
+                  )}
+                </div>
               </div>
             </div>
           </div>
+
+          {/* Sección de fotos faltantes */}
+          {fotosFaltantes.length > 0 && (
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <h4 className="font-medium text-blue-800 mb-3">📸 Tipos de fotos faltantes:</h4>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {fotosFaltantes.map((tipo, index) => (
+                  <div key={index} className="flex items-center text-blue-700 bg-blue-100 rounded px-3 py-2">
+                    <span className="text-blue-500 mr-2">📷</span>
+                    <span className="text-sm font-medium">{tipo}</span>
+                  </div>
+                ))}
+              </div>
+              <p className="text-blue-600 text-sm mt-3">
+                💡 Puedes ir al Paso 3 para subir las fotos faltantes antes de finalizar.
+              </p>
+            </div>
+          )}
 
           <div className="bg-white border border-gray-200 rounded-lg p-4 max-h-64 overflow-y-auto">
             <h4 className="font-medium text-gray-800 mb-3">Preguntas pendientes:</h4>
@@ -1706,15 +1866,24 @@ const Auditoria = () => {
               variant="secondary"
               className="flex-1 sm:flex-none"
             >
-              📝 Volver a Completar
+              {(preguntasSinResponder.length > 0 || fotosFaltantes.length > 0) 
+                ? '📝 Completar Pendientes' 
+                : '❌ Cancelar'}
             </Button>
             <Button 
               onClick={confirmarFinalizacionConPendientes}
-              variant="danger"
+              variant={
+                (preguntasSinResponder.length === 0 && fotosFaltantes.length === 0) 
+                  ? "primary" 
+                  : "danger"
+              }
               disabled={isSaving}
               className="flex-1 sm:flex-none"
             >
-              {isSaving ? 'Finalizando...' : '✅ Finalizar de Todas Formas'}
+              {isSaving ? 'Finalizando...' : 
+               (preguntasSinResponder.length === 0 && fotosFaltantes.length === 0)
+                ? '✅ Finalizar Auditoría'
+                : '⚠️ Finalizar Incompleta'}
             </Button>
           </div>
         </div>
