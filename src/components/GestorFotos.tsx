@@ -326,33 +326,35 @@ const GestorFotos: React.FC<GestorFotosProps> = ({ idAuditoria, readonly = false
             📸 Checklist de Fotos ({fotos.length} fotos subidas)
           </h3>
           
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4">
             {TIPOS_FOTOS.map((tipo: TipoFoto) => {
               const cantidad = conteoFotos[tipo] || 0;
               const estaSubiendo = subiendo === tipo;
               
               return (
-                <div key={tipo} className="flex items-center justify-between p-3 bg-gray-50 rounded border">
-                  <div className="flex items-center gap-3">
-                    <span className={`text-lg ${cantidad > 0 ? '✅' : '📷'}`}>
+                <div key={tipo} className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-4 bg-gray-50 rounded-lg border shadow-sm hover:shadow-md transition-shadow gap-3 sm:gap-0">
+                  <div className="flex items-center gap-4 flex-1">
+                    <div className={`w-12 h-12 rounded-full flex items-center justify-center text-2xl ${
+                      cantidad > 0 ? 'bg-green-100 border-2 border-green-300' : 'bg-gray-100 border-2 border-gray-300'
+                    }`}>
                       {cantidad > 0 ? '✅' : '📷'}
-                    </span>
-                    <div>
-                      <p className="font-medium text-gray-800">{tipo}</p>
-                      <p className="text-sm text-gray-500">
-                        {cantidad} foto{cantidad !== 1 ? 's' : ''}
+                    </div>
+                    <div className="flex-1">
+                      <p className="font-semibold text-gray-800 text-base sm:text-lg leading-tight">{tipo}</p>
+                      <p className="text-sm text-gray-600 mt-1">
+                        {cantidad > 0 ? `${cantidad} foto${cantidad !== 1 ? 's' : ''} subida${cantidad !== 1 ? 's' : ''}` : 'Sin fotos'}
                       </p>
                     </div>
                   </div>
                   
-                  <div className="flex gap-2">
+                  <div className="flex flex-col sm:flex-row gap-2 sm:gap-2 w-full sm:w-auto">
                     {cantidad > 0 && (
                       <Button
                         variant="secondary"
-                        className="text-xs px-2 py-1"
+                        className="text-sm px-4 py-2 w-full sm:w-auto touch-manipulation"
                         onClick={() => verFotosPorTipo(tipo)}
                       >
-                        Ver ({cantidad})
+                        🔍 Ver fotos ({cantidad})
                       </Button>
                     )}
                     
@@ -365,10 +367,10 @@ const GestorFotos: React.FC<GestorFotosProps> = ({ idAuditoria, readonly = false
                         
                         {/* Botones separados para iOS */}
                         {esIOS ? (
-                          <div className="flex gap-1">
+                          <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
                             <Button
                               variant="primary"
-                              className="text-xs px-2 py-1"
+                              className="text-sm px-4 py-2 w-full sm:w-auto touch-manipulation flex items-center justify-center gap-2"
                               onClick={() => {
                                 console.log('📱 Click en botón cámara para:', tipo);
                                 const btn = document.getElementById(`btn-camera-${tipo.replace(/\s+/g, '-').toLowerCase()}`) as HTMLButtonElement;
@@ -380,11 +382,12 @@ const GestorFotos: React.FC<GestorFotosProps> = ({ idAuditoria, readonly = false
                               }}
                               disabled={estaSubiendo}
                             >
-                              📷 Cámara
+                              {estaSubiendo ? '⏳' : '📷'} 
+                              {estaSubiendo ? 'Subiendo...' : 'Cámara'}
                             </Button>
                             <Button
                               variant="secondary"
-                              className="text-xs px-2 py-1"
+                              className="text-sm px-4 py-2 w-full sm:w-auto touch-manipulation flex items-center justify-center gap-2"
                               onClick={() => {
                                 console.log('📱 Click en botón galería para:', tipo);
                                 const btn = document.getElementById(`btn-gallery-${tipo.replace(/\s+/g, '-').toLowerCase()}`) as HTMLButtonElement;
@@ -402,7 +405,7 @@ const GestorFotos: React.FC<GestorFotosProps> = ({ idAuditoria, readonly = false
                         ) : (
                           <Button
                             variant="primary"
-                            className="text-xs px-2 py-1"
+                            className="text-sm px-4 py-2 w-full sm:w-auto touch-manipulation flex items-center justify-center gap-2"
                             onClick={() => {
                               console.log('📱 Click en botón subir para:', tipo);
                               const btn = document.getElementById(`btn-gallery-${tipo.replace(/\s+/g, '-').toLowerCase()}`) as HTMLButtonElement;
@@ -414,7 +417,7 @@ const GestorFotos: React.FC<GestorFotosProps> = ({ idAuditoria, readonly = false
                             }}
                             disabled={estaSubiendo}
                           >
-                            {estaSubiendo ? '⏳ Subiendo...' : '📤 Subir'}
+                            {estaSubiendo ? '⏳ Subiendo...' : '📤 Subir foto'}
                           </Button>
                         )}
                       </>
@@ -448,14 +451,14 @@ const GestorFotos: React.FC<GestorFotosProps> = ({ idAuditoria, readonly = false
             </div>
             
             {/* Contenido scrolleable */}
-            <div className="p-6 overflow-y-auto max-h-[calc(90vh-80px)]">
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="p-4 sm:p-6 overflow-y-auto max-h-[calc(90vh-80px)]">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
                 {fotosViendo.map((foto) => (
                   <div key={foto.id_auditoria_foto} className="relative group bg-gray-50 rounded-lg overflow-hidden">
                     <img
                       src={foto.url_foto}
                       alt={foto.tipo_foto}
-                      className="w-full h-48 object-cover cursor-pointer hover:scale-105 transition-transform duration-200"
+                      className="w-full h-40 sm:h-48 object-cover cursor-pointer hover:scale-105 transition-transform duration-200 touch-manipulation"
                       onClick={() => setFotoModalAbierta(foto.url_foto)}
                       onLoad={() => {
                         console.log('✅ Imagen cargada correctamente:', foto.url_foto);

@@ -856,19 +856,20 @@ const Auditoria = () => {
   // Renderizar lista de preguntas por categoría
   const renderPreguntas = () => (
     <div className="space-y-8">
-      <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold text-gray-800">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
+        <h2 className="text-xl sm:text-2xl font-bold text-gray-800">
           Evaluación de Auditoría
           {auditoriaActual && (
-            <span className="ml-2 text-lg font-normal text-gray-600">
+            <span className="block sm:inline sm:ml-2 text-sm sm:text-lg font-normal text-gray-600">
               (ID: {auditoriaActual.id_auditoria})
             </span>
           )}
         </h2>
-        <div className="flex gap-4">
+        <div className="flex flex-col sm:flex-row gap-2 sm:gap-4">
           <Button 
             onClick={() => setShowResumenModal(true)}
             variant="secondary"
+            className="w-full sm:w-auto"
           >
             Ver Resumen
           </Button>
@@ -978,13 +979,13 @@ const Auditoria = () => {
                         : `temp-${subcategoria.id}-${pregunta.id_pregunta || 'var'}-${preguntaIdx}-${pregunta.texto_pregunta.slice(0, 10)}`
                     }>
                       <div 
-                        className="flex items-center justify-between py-2 px-3 bg-white rounded border hover:bg-gray-50 transition-all duration-300"
+                        className="flex flex-col sm:flex-row sm:items-center sm:justify-between py-3 px-3 bg-white rounded border hover:bg-gray-50 transition-all duration-300 gap-3 sm:gap-0"
                         data-pregunta-id={pregunta.id_auditoria_pregunta}
                       >
-                        <p className="text-gray-800 text-sm flex-1 mr-4">
+                        <p className="text-gray-800 text-sm sm:flex-1 sm:mr-4 leading-relaxed">
                           {pregunta.texto_pregunta}
                         </p>
-                        <div className="flex gap-2 items-center">
+                        <div className="flex gap-2 items-center justify-end sm:justify-center flex-shrink-0">
                           {/* Botón de eliminar pregunta en modo edición */}
                           {modoEdicionPreguntas[subcategoria.id] && (
                             <button
@@ -1014,7 +1015,7 @@ const Auditoria = () => {
                                   }
                                 }}
                                 disabled={modoRevision && !modoEdicion}
-                                className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold transition-all duration-200 ${
+                                className={`w-10 h-10 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-sm font-bold transition-all duration-200 touch-manipulation ${
                                   pregunta.respuesta?.respuesta === true
                                     ? 'bg-green-500 text-white'
                                     : (modoRevision && !modoEdicion)
@@ -1035,7 +1036,7 @@ const Auditoria = () => {
                                   }
                                 }}
                                 disabled={modoRevision && !modoEdicion}
-                                className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold transition-all duration-200 ${
+                                className={`w-10 h-10 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-sm font-bold transition-all duration-200 touch-manipulation ${
                                   pregunta.respuesta?.respuesta === false
                                     ? 'bg-red-500 text-white'
                                     : (modoRevision && !modoEdicion)
@@ -1058,7 +1059,7 @@ const Auditoria = () => {
                               <span className="text-red-600 mr-2">⚠️</span>
                               Acciones Requeridas
                             </h5>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                               <div>
                                 <label className="block text-sm font-medium text-red-700 mb-2">
                                   Comentario
@@ -1239,7 +1240,7 @@ const Auditoria = () => {
           {/* Resumen General */}
           <div className="bg-blue-50 rounded-lg p-6">
             <h3 className="text-lg font-bold text-blue-800 mb-4">Resumen General</h3>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-center">
               <div>
                 <p className="text-2xl font-bold text-blue-600">{resumen.total_preguntas}</p>
                 <p className="text-sm text-gray-600">Total Preguntas</p>
@@ -1351,7 +1352,7 @@ const Auditoria = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 py-6 px-6">
+    <div className="min-h-screen bg-gray-50 py-4 sm:py-6 px-2 sm:px-6">
       {/* Mensajes de Estado */}
       {error && (
         <div className="mb-6 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded relative">
@@ -1426,35 +1427,43 @@ const Auditoria = () => {
         </div>
       </div>
 
-      {/* Navegación de Pasos */}
+      {/* Navegación de Pasos - Responsive */}
       <div className="mb-8">
-        <div className="flex items-center justify-center space-x-8">
+        <div className="grid grid-cols-2 sm:flex sm:items-center sm:justify-center gap-2 sm:gap-4 lg:gap-8">
           <Button 
             variant={currentStep === 1 ? 'primary' : 'secondary'}
             onClick={() => setCurrentStep(1)}
+            className="text-xs sm:text-sm w-full sm:w-auto"
           >
-            1. Información
+            <span className="hidden sm:inline">1. Información</span>
+            <span className="sm:hidden">1. Info</span>
           </Button>
           <Button 
             variant={currentStep === 2 ? 'primary' : 'secondary'}
             onClick={() => setCurrentStep(2)}
             disabled={!auditoriaActual}
+            className="text-xs sm:text-sm w-full sm:w-auto"
           >
-            2. Evaluación
+            <span className="hidden sm:inline">2. Evaluación</span>
+            <span className="sm:hidden">2. Eval.</span>
           </Button>
           <Button 
             variant={currentStep === 3 ? 'primary' : 'secondary'}
             onClick={() => setCurrentStep(3)}
             disabled={!auditoriaActual}
+            className="text-xs sm:text-sm w-full sm:w-auto"
           >
-            3. Fotos
+            <span className="hidden sm:inline">3. Fotos</span>
+            <span className="sm:hidden">3. Fotos</span>
           </Button>
           <Button 
             variant={currentStep === 4 ? 'primary' : 'secondary'}
             onClick={() => setCurrentStep(4)}
             disabled={!auditoriaActual}
+            className="text-xs sm:text-sm w-full sm:w-auto col-span-2 sm:col-span-1"
           >
-            4. Notas y Conclusiones
+            <span className="hidden sm:inline">4. Notas y Conclusiones</span>
+            <span className="sm:hidden">4. Finalizar</span>
           </Button>
         </div>
       </div>
@@ -1522,7 +1531,7 @@ const Auditoria = () => {
                 </div>
                 
                 <div className="p-6 space-y-6">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-2">
                         Notas del Personal
