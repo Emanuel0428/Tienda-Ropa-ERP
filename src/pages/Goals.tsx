@@ -3,7 +3,6 @@ import { Card, CardHeader, CardTitle } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
 import { 
-  Target, 
   Trophy, 
   TrendingUp, 
   Calendar,

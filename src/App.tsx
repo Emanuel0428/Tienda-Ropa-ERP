@@ -1,5 +1,7 @@
+import React from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from './hooks/useAuth';
+import { useContentSquare } from './hooks/useContentSquare';
 import Sidebar from './components/layout/Sidebar';
 import Header from './components/layout/Header';
 import Dashboard from './pages/Dashboard';
@@ -29,6 +31,21 @@ const Notifications = () => <div className="p-6 mt-10"><h1 className="text-2xl f
 
 function App() {
   const { user, loading, signOut } = useAuth();
+  
+  // Inicializar ContentSquare
+  const { setUserId, setCustomVariable, tagSession } = useContentSquare();
+  
+  // Identificar usuario cuando haga login
+  React.useEffect(() => {
+    if (user && user.email) {
+      setUserId(user.id);
+      setCustomVariable('user_email', user.email);
+      setCustomVariable('user_id', user.id);
+      
+      // Etiquetar la sesión como autenticada
+      tagSession(['authenticated', 'erp_user']);
+    }
+  }, [user, setUserId, setCustomVariable, tagSession]);
 
   // Mostrar loading solo cuando está procesando login
   if (loading) {

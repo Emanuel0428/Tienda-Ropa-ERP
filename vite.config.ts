@@ -14,7 +14,7 @@ export default defineConfig({
         changeOrigin: true,
         secure: false,
         rewrite: (path) => path.replace(/^\/api\/n8n/, ''),
-        configure: (proxy, options) => {
+        configure: (_, options) => {
           console.log('Proxy configurado para:', options.target);
         }
       }
