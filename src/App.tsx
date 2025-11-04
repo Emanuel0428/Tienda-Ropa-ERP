@@ -22,6 +22,7 @@ import Statistics from './pages/Statistics';
 
 import Stores from './pages/Stores';
 import Users from './pages/Users';
+import ContentSquareTest from './pages/ContentSquareTest';
 
 // Componentes placeholder para las rutas faltantes
 const Analytics = () => <div className="p-6 mt-10"><h1 className="text-2xl font-bold">Analíticas Avanzadas</h1><p className="text-gray-600 mt-2">Reportes y análisis detallados</p></div>;
@@ -106,6 +107,7 @@ function App() {
             <Route path="/notifications" element={<Notifications />} />
             <Route path="/profile" element={<Profile />} />
             <Route path="/settings" element={<Settings />} />
+            <Route path="/contentsquare-test" element={<ContentSquareTest />} />
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Routes>
         </main>

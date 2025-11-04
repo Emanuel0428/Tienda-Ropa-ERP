@@ -59,7 +59,8 @@ const Sidebar: React.FC<SidebarProps> = ({ user }) => {
         { id: 'stores', label: 'Tiendas', icon: Store, path: '/stores' },
         { id: 'users', label: 'Usuarios', icon: Users, path: '/users' },
         { id: 'analytics', label: 'Analíticas', icon: TrendingUp, path: '/analytics' },
-        { id: 'statistics', label: 'Estadísticas', icon: BarChart, path: '/statistics' }
+        { id: 'statistics', label: 'Estadísticas', icon: BarChart, path: '/statistics' },
+        { id: 'contentsquare-test', label: '🧪 Test ContentSquare', icon: HelpCircle, path: '/contentsquare-test' }
       );
     } else if (user?.role === 'coordinador') {
       // Coordinador ve solo elementos específicos
