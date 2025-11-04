@@ -152,9 +152,9 @@ const Auditoria = () => {
 
       // � Tracking: Revisión de auditoría iniciada
       trackAuditEvent('review_started', {
-        auditId: auditoriaActual.id,
-        storeId: auditoriaActual.tienda_id,
-        score: auditoriaActual.calificacion_final || 0
+        auditId: auditoriaActual.id_auditoria,
+        storeId: auditoriaActual.id_tienda,
+        score: auditoriaActual.calificacion_total || 0
       });
 
       setNotasPersonal(auditoriaActual.notas_personal || '');
@@ -165,23 +165,23 @@ const Auditoria = () => {
 
   // Tracking cuando se inicia una nueva auditoría (no modo revisión)
   useEffect(() => {
-    if (auditoriaActual && !modoRevision && auditoriaActual.id) {
-      console.log('🚀 Nueva auditoría iniciada:', auditoriaActual.id);
+    if (auditoriaActual && !modoRevision && auditoriaActual.id_auditoria && respuestas) {
+      console.log('🚀 Nueva auditoría iniciada:', auditoriaActual.id_auditoria);
       
       // Iniciar transacción de auditoría
       startTransaction('audit_completion');
       
       // Tracking de inicio de auditoría
       trackAuditEvent('started', {
-        auditId: auditoriaActual.id,
-        storeId: auditoriaActual.tienda_id,
-        questionsCount: preguntas.length
+        auditId: auditoriaActual.id_auditoria,
+        storeId: auditoriaActual.id_tienda,
+        questionsCount: respuestas?.size || 0
       });
       
       // Etiquetar sesión como auditor activo
       tagSession(['audit_session', 'active_auditor']);
     }
-  }, [auditoriaActual, modoRevision, startTransaction, trackAuditEvent, tagSession, preguntas.length]);
+  }, [auditoriaActual, modoRevision, startTransaction, trackAuditEvent, tagSession, respuestas]);
 
   // Guardar notas automáticamente cuando cambien (con debounce)
   useEffect(() => {
@@ -902,11 +902,12 @@ const Auditoria = () => {
         console.log('🎉 Auditoría finalizada exitosamente');
         
         // � Tracking: Auditoría completada
-        trackEvent('audit_completed', {
-          auditId: auditoriaActual.id,
-          storeId: auditoriaActual.tienda_id,
-          score: auditoriaActual.calificacion_final || 0,
-          questionsCount: respuestas.length
+        endTransaction('audit_completion');
+        trackAuditEvent('completed', {
+          auditId: auditoriaActual.id_auditoria,
+          storeId: auditoriaActual.id_tienda,
+          score: auditoriaActual.calificacion_total || 0,
+          questionsCount: respuestas.size
         });
         
         // Etiquetar sesión como auditor productivo
