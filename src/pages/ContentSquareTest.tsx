@@ -9,7 +9,6 @@ export default function ContentSquareTest() {
   const { 
     isEnabled, 
     isReady,
-    retryCount,
     sendEvent, 
     setCustomVariable, 
     setUserId, 
@@ -158,21 +157,16 @@ export default function ContentSquareTest() {
     addResult(`🔍 Diagnóstico completo:`);
     addResult(`  - isReady: ${diagnostics.isReady}`);
     addResult(`  - isEnabled: ${diagnostics.isEnabled}`);
-    addResult(`  - retryCount: ${diagnostics.retryCount}`);
     addResult(`  - hasWindow: ${diagnostics.hasWindow}`);
-    addResult(`  - hasUxa: ${diagnostics.hasUxa}`);
-    addResult(`  - uxaType: ${diagnostics.uxaType}`);
-    addResult(`  - hasCSConf: ${diagnostics.hasCSConf}`);
+    addResult(`  - hasCS_CONF: ${diagnostics.hasCS_CONF}`);
+    addResult(`  - csConfQueue: ${diagnostics.csConfQueue}`);
     addResult(`  - contentSquareId: ${diagnostics.contentSquareId}`);
+    addResult(`  - envId: ${diagnostics.envId}`);
     
-    if (diagnostics.uxaMethods.length > 0) {
-      addResult(`📝 Métodos UXA: ${diagnostics.uxaMethods.join(', ')}`);
-    }
-
     // Estado general
-    if (diagnostics.hasUxa && diagnostics.isReady) {
+    if (diagnostics.hasCS_CONF === 'function' && diagnostics.isReady) {
       addResult(`✅ ContentSquare completamente funcional`);
-    } else if (diagnostics.hasUxa && !diagnostics.isReady) {
+    } else if (diagnostics.hasCS_CONF === 'function' && !diagnostics.isReady) {
       addResult(`⚠️ ContentSquare cargado pero no listo`);
     } else {
       addResult(`❌ ContentSquare no disponible`);
@@ -237,9 +231,6 @@ export default function ContentSquareTest() {
           </div>
           {contentSquareId && (
             <p className="text-sm text-gray-600">ID: {contentSquareId}</p>
-          )}
-          {retryCount > 0 && (
-            <p className="text-xs text-gray-500">Reintentos: {retryCount}</p>
           )}
         </Card>
 

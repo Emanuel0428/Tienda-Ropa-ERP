@@ -37,7 +37,6 @@ export const useContentSquare = (config?: ContentSquareConfig) => {
   const contentSquareId = config?.id || import.meta.env.VITE_CONTENTSQUARE_ID || null;
   const isEnabled = config?.enabled !== false && !!contentSquareId && contentSquareId !== 'tu-id-contentsquare';
   const [isReady, setIsReady] = useState(false);
-  const [retryCount, setRetryCount] = useState(0);
 
   useEffect(() => {
     if (!isEnabled || !contentSquareId) {
@@ -45,37 +44,20 @@ export const useContentSquare = (config?: ContentSquareConfig) => {
       return;
     }
 
-    const maxRetries = 20; // 10 segundos con intervalos de 500ms
-    
+    // Verificación simple sin reintentos
     const checkAvailability = () => {
-      // Verificar si ContentSquare está completamente disponible
       if (typeof window !== 'undefined' && 
           typeof window.CS_CONF === 'function') {
-        console.log('📊 ContentSquare: API completamente disponible');
+        console.log('📊 ContentSquare: API disponible');
         setIsReady(true);
-        return true;
-      }
-      
-      if (retryCount < maxRetries) {
-        console.log(`⏳ ContentSquare: Reintento ${retryCount + 1}/${maxRetries}`);
-        setRetryCount(prev => prev + 1);
-        setTimeout(checkAvailability, 500);
       } else {
-        console.error('❌ ContentSquare: No disponible después de múltiples reintentos');
-        console.log('🔍 Diagnóstico:', {
-          hasWindow: typeof window !== 'undefined',
-          hasCS_CONF: typeof window.CS_CONF,
-          csConfQueue: window.CS_CONF && window.CS_CONF.q ? window.CS_CONF.q.length : 'N/A'
-        });
+        console.log('📊 ContentSquare: API no disponible');
+        setIsReady(false);
       }
-      
-      return false;
     };
     
-    if (!isReady) {
-      checkAvailability();
-    }
-  }, [contentSquareId, isEnabled, retryCount, isReady]);
+    checkAvailability();
+  }, [contentSquareId, isEnabled]);
 
   // Funciones del hook
   const sendEvent = (eventName: string, data?: any) => {
@@ -205,18 +187,16 @@ export const useContentSquare = (config?: ContentSquareConfig) => {
       isReady,
       isEnabled,
       contentSquareId,
-      retryCount,
       hasWindow: typeof window !== 'undefined',
       hasCS_CONF: typeof window.CS_CONF,
       csConfQueue: window.CS_CONF && window.CS_CONF.q ? window.CS_CONF.q.length : 'N/A',
       envId: import.meta.env.VITE_CONTENTSQUARE_ID,
     };
-  }, [isReady, isEnabled, contentSquareId, retryCount]);
+  }, [isReady, isEnabled, contentSquareId]);
 
   return {
     isEnabled,
     isReady,
-    retryCount,
     sendEvent,
     setCustomVariable,
     setUserId,
