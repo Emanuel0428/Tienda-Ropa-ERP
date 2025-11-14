@@ -70,6 +70,14 @@ function App() {
     );
   }
 
+  // Componente para rutas protegidas de admin
+  const AdminRoute = ({ children }: { children: React.ReactNode }) => {
+    if (user?.role !== 'admin') {
+      return <Navigate to="/dashboard" replace />;
+    }
+    return <>{children}</>;
+  };
+
   // Si hay usuario, mostrar la aplicación
   return (
     <div className="min-h-screen bg-gray-50">
@@ -94,20 +102,40 @@ function App() {
             <Route path="/sales-summary" element={<SalesSummary />} />
             <Route path="/goals" element={<Goals />} />
             <Route path="/inventory" element={<Inventory />} />
-            <Route path="/stores" element={<Stores />} />
-            <Route path="/users" element={<Users />} />
-            <Route path="/statistics" element={<Statistics />} />
+            <Route path="/stores" element={
+              <AdminRoute>
+                <Stores />
+              </AdminRoute>
+            } />
+            <Route path="/users" element={
+              <AdminRoute>
+                <Users />
+              </AdminRoute>
+            } />
+            <Route path="/statistics" element={
+              <AdminRoute>
+                <Statistics />
+              </AdminRoute>
+            } />
             <Route path="/auditoria" element={<Auditoria />} />
             <Route path="/auditoria/historial" element={<AuditoriaHistorial />} />
             <Route path="/auditoria/estadisticas" element={<AuditoriaEstadisticas />} />
             <Route path="/preguntas-maestras" element={<PreguntasMaestras />} />
-            <Route path="/analytics" element={<Analytics />} />
+            <Route path="/analytics" element={
+              <AdminRoute>
+                <Analytics />
+              </AdminRoute>
+            } />
             <Route path="/incidents" element={<Incidents />} />
             <Route path="/schedule" element={<Schedule />} />
             <Route path="/notifications" element={<Notifications />} />
             <Route path="/profile" element={<Profile />} />
             <Route path="/settings" element={<Settings />} />
-            <Route path="/contentsquare-test" element={<ContentSquareTest />} />
+            <Route path="/contentsquare-test" element={
+              <AdminRoute>
+                <ContentSquareTest />
+              </AdminRoute>
+            } />
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Routes>
         </main>
