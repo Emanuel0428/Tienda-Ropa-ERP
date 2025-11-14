@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
@@ -11,7 +11,9 @@ import {
   Eye, 
   Trash2,
   Search,
-  Camera
+  Camera,
+  Scan,
+  CheckCircle
 } from 'lucide-react';
 
 const Documents: React.FC = () => {
@@ -26,7 +28,7 @@ const Documents: React.FC = () => {
     {
       id: 'ventas',
       name: 'Ventas',
-      description: 'Reportes de ventas mensuales',
+      description: 'Reportes mensuales de ventas (subir a principio de mes)',
       frequency: 'Mensual',
       icon: '💰',
       color: 'green',
@@ -34,18 +36,18 @@ const Documents: React.FC = () => {
     },
     {
       id: 'cierre-caja',
-      name: 'Cierre de Caja',
+      name: 'Cierre de Caja', 
       description: 'Cierre diario de caja registradora',
       frequency: 'Diario',
-      icon: '📊',
+      icon: '📦',
       color: 'blue',
       drivePath: '/ERP_GMCO/Documentos/Cierre_Caja'
     },
     {
       id: 'cierre-voucher',
       name: 'Cierre de Voucher',
-      description: 'Cierre de compras por datáfono',
-      frequency: 'Diario',
+      description: 'Cierre de vouchers de datafono (solo cuando hay compras)',
+      frequency: 'Condicional',
       icon: '💳',
       color: 'purple',
       drivePath: '/ERP_GMCO/Documentos/Cierre_Voucher'
@@ -163,10 +165,153 @@ const Documents: React.FC = () => {
     }
   };
 
+  // Función para inicializar cámara
+  const startCamera = useCallback(async () => {
+    try {
+      // Verificar si getUserMedia está disponible
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        alert('Tu navegador no soporta acceso a la cámara. Usa Chrome, Firefox o Safari.');
+        return;
+      }
+
+      console.log('🎥 Solicitando acceso a la cámara...');
+
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { 
+          facingMode: 'environment', // Usar cámara trasera si está disponible
+          width: { ideal: 1280, min: 640 },
+          height: { ideal: 720, min: 480 }
+        }
+      });
+      
+      console.log('🎥 Cámara obtenida exitosamente');
+      console.log('🎥 Stream tracks:', stream.getVideoTracks().length);
+      
+      if (videoRef.current) {
+        // Detener stream anterior si existe
+        if (videoRef.current.srcObject) {
+          const oldStream = videoRef.current.srcObject as MediaStream;
+          oldStream.getTracks().forEach(track => track.stop());
+        }
+
+        videoRef.current.srcObject = stream;
+        
+        // Forzar reproducción inmediata
+        videoRef.current.muted = true; // Necesario para autoplay
+        videoRef.current.autoplay = true;
+        videoRef.current.playsInline = true;
+        
+        // Intentar reproducir inmediatamente
+        videoRef.current.play()
+          .then(() => {
+            console.log('🎥 Video reproduciéndose exitosamente (inmediato)');
+            setIsScanning(true);
+          })
+          .catch(error => {
+            console.log('🎥 Play inmediato falló, intentando con metadata:', error);
+            
+            // Fallback: esperar metadata
+            videoRef.current!.onloadedmetadata = () => {
+              console.log('🎥 Video metadata cargada');
+              videoRef.current?.play()
+                .then(() => {
+                  console.log('🎥 Video reproduciéndose exitosamente (metadata)');
+                  setIsScanning(true);
+                })
+                .catch(error => {
+                  console.error('🎥 Error al reproducir video:', error);
+                  setIsScanning(true); // Mostrar el video incluso si play() falla
+                });
+            };
+          });
+
+        // Backup: forzar estado después de un momento
+        setTimeout(() => {
+          if (videoRef.current?.srcObject) {
+            console.log('🎥 Forzando estado isScanning=true');
+            setIsScanning(true);
+          }
+        }, 1500);
+      }
+    } catch (error: any) {
+      console.error('🎥 Error accessing camera:', error);
+      
+      // Mensajes de error más específicos
+      if (error?.name === 'NotAllowedError') {
+        alert('❌ Acceso a la cámara denegado. Por favor, permite el acceso a la cámara en tu navegador.');
+      } else if (error?.name === 'NotFoundError') {
+        alert('❌ No se encontró ninguna cámara. Verifica que tu dispositivo tenga una cámara conectada.');
+      } else if (error?.name === 'NotSupportedError') {
+        alert('❌ Acceso a la cámara no soportado. Asegúrate de estar usando HTTPS.');
+      } else {
+        alert(`❌ Error al acceder a la cámara: ${error?.message || 'Error desconocido'}`);
+      }
+    }
+  }, []);
+
+  // Función para detener la cámara
+  const stopCamera = useCallback(() => {
+    if (videoRef.current?.srcObject) {
+      const stream = videoRef.current.srcObject as MediaStream;
+      stream.getTracks().forEach(track => {
+        track.stop();
+        console.log('🎥 Cámara detenida');
+      });
+      videoRef.current.srcObject = null;
+    }
+    setIsScanning(false);
+  }, []);
+
+  // Efecto para iniciar cámara automáticamente cuando se abre el modal
+  useEffect(() => {
+    if (showScanModal && !isScanning && !scannedImage) {
+      console.log('🎥 useEffect: Iniciando cámara automáticamente...');
+      // Pequeño delay para asegurar que el modal esté completamente renderizado
+      const timeoutId = setTimeout(() => {
+        startCamera();
+      }, 300);
+      
+      return () => clearTimeout(timeoutId);
+    }
+    
+    // Cleanup: detener cámara cuando se cierra el modal
+    if (!showScanModal) {
+      console.log('🎥 useEffect: Modal cerrado, deteniendo cámara...');
+      stopCamera();
+      setScannedImage(null);
+    }
+  }, [showScanModal]); // Removemos las otras dependencias para evitar ejecuciones múltiples
+
+  // Función para capturar foto
+  const capturePhoto = useCallback(() => {
+    if (!videoRef.current || !canvasRef.current) return;
+
+    const canvas = canvasRef.current;
+    const video = videoRef.current;
+    const context = canvas.getContext('2d');
+    
+    if (!context) return;
+
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    
+    context.drawImage(video, 0, 0);
+    
+    const imageData = canvas.toDataURL('image/jpeg', 0.8);
+    setScannedImage(imageData);
+
+    // Detener la cámara
+    const stream = video.srcObject as MediaStream;
+    if (stream) {
+      stream.getTracks().forEach(track => track.stop());
+    }
+    setIsScanning(false);
+  }, []);
+
   // Función para simular subida de archivo
-  const handleUpload = (file: File | null) => {
-    if (!file) {
-      alert('Por favor selecciona un archivo');
+  const handleUpload = (file: File | null, isScanned: boolean = false) => {
+    if (!file && !isScanned) {
+      alert('Por favor selecciona un archivo o escanea un documento');
       return;
     }
 
@@ -175,11 +320,13 @@ const Documents: React.FC = () => {
     // Simular proceso de subida
     console.log(`Subiendo archivo a: ${category.drivePath}`);
     console.log(`Categoría: ${category.name}`);
-    console.log(`Archivo: ${file.name}`);
+    console.log(`Tipo: ${isScanned ? 'Documento escaneado' : 'Archivo PDF'}`);
     
     alert(`¡Documento subido exitosamente!\n\nCategoría: ${category.name}\nRuta de Drive: ${category.drivePath}`);
     
     setShowUploadModal(false);
+    setShowScanModal(false);
+    setScannedImage(null);
   };
 
   return (
@@ -423,47 +570,51 @@ const Documents: React.FC = () => {
                             {doc.size} • {new Date(doc.uploadDate).toLocaleDateString()}
                           </p>
                           <div className="flex items-center gap-2 mt-2">
-                            <Badge variant={getCategoryBadgeVariant(doc.category)} size="sm">
-                              {category.name}
-                            </Badge>
-                          </div>
-                          <p className="text-xs text-gray-500 mt-1">
-                            Por {doc.uploadedBy}
-                          </p>
-                        </div>
+                        <Badge variant={getCategoryBadgeVariant(doc.category)} size="sm">
+                          {category.name}
+                        </Badge>
+                        <Badge variant="success" size="sm">
+                          <CheckCircle className="w-3 h-3 mr-1" />
+                          Subido
+                        </Badge>
                       </div>
-                      
-                      <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-200">
-                        <div className="flex space-x-2">
-                          <Button variant="outline" size="sm">
-                            <Eye className="w-3 h-3 mr-1" />
-                            Ver
-                          </Button>
-                          <Button variant="outline" size="sm">
-                            <Download className="w-3 h-3 mr-1" />
-                            Descargar
-                          </Button>
-                        </div>
-                        <Button variant="ghost" size="sm" className="text-red-600 hover:text-red-700">
-                          <Trash2 className="w-3 h-3" />
-                        </Button>
-                      </div>
-                    </Card>
-                  );
-                })}
-              </div>
-            ) : (
-              <div className="text-center py-12">
-                <FileText className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                <p className="text-gray-500">
-                  {selectedCategory === 'all' 
-                    ? 'No hay documentos disponibles' 
-                    : `No hay documentos en la categoría "${getCategoryById(selectedCategory).name}"`
-                  }
-                </p>
-              </div>
-            )}
+                      <p className="text-xs text-gray-500 mt-1">
+                        Por {doc.uploadedBy}
+                      </p>
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-200">
+                    <div className="flex space-x-2">
+                      <Button variant="outline" size="sm">
+                        <Eye className="w-3 h-3 mr-1" />
+                        Ver
+                      </Button>
+                      <Button variant="outline" size="sm">
+                        <Download className="w-3 h-3 mr-1" />
+                        Descargar
+                      </Button>
+                    </div>
+                    <Button variant="ghost" size="sm" className="text-red-600 hover:text-red-700">
+                      <Trash2 className="w-3 h-3" />
+                    </Button>
+                  </div>
+                </Card>
+              );
+            })}
           </div>
+        ) : (
+          <div className="text-center py-12">
+            <FileText className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+            <p className="text-gray-500">
+              {selectedCategory === 'all' 
+                ? 'No hay documentos disponibles' 
+                : `No hay documentos en la categoría "${getCategoryById(selectedCategory).name}"`
+              }
+            </p>
+          </div>
+        )}
+      </div>
         </>
       )}
 
@@ -501,18 +652,142 @@ const Documents: React.FC = () => {
             <input
               type="file"
               accept=".pdf"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) {
-                  handleUpload(file);
-                }
-              }}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             />
             <p className="text-xs text-gray-500 mt-1">
-              Solo archivos PDF. Máximo 10MB.
+              Solo archivos PDF (máx. 10MB)
             </p>
           </div>
+
+          <div className="flex justify-end space-x-3">
+            <Button variant="outline" onClick={() => setShowUploadModal(false)}>
+              Cancelar
+            </Button>
+            <Button onClick={() => handleUpload(null)}>
+              Subir a Drive
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Modal de escaneado */}
+      <Modal
+        isOpen={showScanModal}
+        onClose={() => {
+          setShowScanModal(false);
+          setScannedImage(null);
+          setIsScanning(false);
+        }}
+        title="Escanear Documento"
+        size="lg"
+      >
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Categoría del Documento
+            </label>
+            <select
+              value={selectedUploadCategory}
+              onChange={(e) => setSelectedUploadCategory(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            >
+              {documentCategories.map(category => (
+                <option key={category.id} value={category.id}>
+                  {category.icon} {category.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {!scannedImage ? (
+            <div className="text-center">
+              {!isScanning ? (
+                <div className="border-2 border-dashed border-gray-300 rounded-lg p-8">
+                  <Camera className="w-16 h-16 text-blue-500 animate-pulse mx-auto mb-4" />
+                  <p className="text-lg font-medium text-gray-900 mb-2">
+                    Iniciando Cámara...
+                  </p>
+                  <p className="text-sm text-gray-500 mb-4">
+                    Permite el acceso a la cámara cuando el navegador lo solicite
+                  </p>
+                  <Button onClick={startCamera} variant="outline">
+                    <Camera className="w-4 h-4 mr-2" />
+                    Intentar de Nuevo
+                  </Button>
+                </div>
+              ) : (
+                <div>
+                  <div className="relative">
+                    <video 
+                      ref={videoRef} 
+                      className="w-full max-w-md mx-auto rounded-lg shadow-lg bg-gray-900"
+                      autoPlay 
+                      playsInline
+                      muted
+                      controls={false}
+                      width="640"
+                      height="480"
+                      style={{ 
+                        maxHeight: '400px', 
+                        objectFit: 'cover',
+                        display: 'block' // Forzar display block
+                      }}
+                    />
+                    {/* Overlay con información */}
+                    <div className="absolute top-2 left-2 bg-black bg-opacity-50 text-white px-2 py-1 rounded text-xs">
+                      📹 Cámara Activa
+                    </div>
+                    
+                    {/* Debug info - temporal */}
+                    <div className="absolute top-2 right-2 bg-black bg-opacity-50 text-white px-2 py-1 rounded text-xs">
+                      Debug: {videoRef.current?.videoWidth || 0}x{videoRef.current?.videoHeight || 0}
+                    </div>
+                  </div>
+                  <div className="mt-4 text-center">
+                    <p className="text-sm text-gray-600 mb-3">
+                      Posiciona el documento en el centro y presiona Capturar
+                    </p>
+                    <div className="flex justify-center gap-3">
+                      <Button onClick={capturePhoto} size="lg">
+                        <Scan className="w-4 h-4 mr-2" />
+                        Capturar
+                      </Button>
+                      <Button 
+                        variant="outline"
+                        onClick={stopCamera}
+                      >
+                        Cancelar
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="text-center">
+              <img 
+                src={scannedImage || ''} 
+                alt="Documento escaneado" 
+                className="w-full max-w-md mx-auto rounded-lg shadow-lg mb-4"
+              />
+              <div className="flex justify-center space-x-3">
+                <Button 
+                  variant="outline"
+                  onClick={() => {
+                    setScannedImage(null);
+                    startCamera();
+                  }}
+                >
+                  Escanear de Nuevo
+                </Button>
+                <Button onClick={() => handleUpload(null, true)}>
+                  Subir Documento
+                </Button>
+              </div>
+            </div>
+          )}
+
+          <canvas ref={canvasRef} style={{ display: 'none' }} />
         </div>
       </Modal>
     </div>

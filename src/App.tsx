@@ -6,6 +6,7 @@ import Sidebar from './components/layout/Sidebar';
 import Header from './components/layout/Header';
 import Dashboard from './pages/Dashboard';
 import Documents from './pages/Documents';
+import CameraCapture from './pages/CameraCapture';
 import Tasks from './pages/Tasks';
 import Sales from './pages/Sales';
 import SalesSummary from './pages/SalesSummary';
@@ -97,6 +98,7 @@ function App() {
             <Route path="/auth" element={<Navigate to="/dashboard" replace />} />
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/documents" element={<Documents />} />
+            <Route path="/camera-capture" element={<CameraCapture />} />
             <Route path="/tasks" element={<Tasks />} />
             <Route path="/sales" element={<Sales />} />
             <Route path="/sales-summary" element={<SalesSummary />} />
