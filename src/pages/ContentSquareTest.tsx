@@ -8,6 +8,8 @@ export default function ContentSquareTest() {
   const { user } = useAuth();
   const { 
     isEnabled, 
+    isReady,
+    retryCount,
     sendEvent, 
     setCustomVariable, 
     setUserId, 
@@ -15,6 +17,7 @@ export default function ContentSquareTest() {
     endTransaction, 
     tagSession, 
     trackAuditEvent,
+    getDiagnostics,
     contentSquareId 
   } = useContentSquare();
 
@@ -34,10 +37,10 @@ export default function ContentSquareTest() {
     }
 
     // Verificar si el objeto global existe
-    if (window.uxa) {
-      addResult(`✅ Objeto window.uxa disponible`);
+    if (window.CS_CONF) {
+      addResult(`✅ Objeto window.CS_CONF disponible`);
     } else {
-      addResult(`❌ Objeto window.uxa NO disponible`);
+      addResult(`❌ Objeto window.CS_CONF NO disponible`);
     }
   }, [isEnabled, contentSquareId]);
 
@@ -147,23 +150,32 @@ export default function ContentSquareTest() {
     });
   };
 
-  // Test 7: Verificar objetos globales
+  // Test 7: Verificar objetos globales con diagnósticos
   const testGlobalObjects = () => {
     addResult(`🧪 Test 7: Verificando objetos globales`);
     
-    // Verificar ContentSquare
-    if (window.uxa) {
-      addResult(`✅ window.uxa existe`);
-      addResult(`📝 Métodos disponibles: ${Object.getOwnPropertyNames(window.uxa).join(', ')}`);
-    } else {
-      addResult(`❌ window.uxa NO existe`);
+    const diagnostics = getDiagnostics();
+    addResult(`🔍 Diagnóstico completo:`);
+    addResult(`  - isReady: ${diagnostics.isReady}`);
+    addResult(`  - isEnabled: ${diagnostics.isEnabled}`);
+    addResult(`  - retryCount: ${diagnostics.retryCount}`);
+    addResult(`  - hasWindow: ${diagnostics.hasWindow}`);
+    addResult(`  - hasUxa: ${diagnostics.hasUxa}`);
+    addResult(`  - uxaType: ${diagnostics.uxaType}`);
+    addResult(`  - hasCSConf: ${diagnostics.hasCSConf}`);
+    addResult(`  - contentSquareId: ${diagnostics.contentSquareId}`);
+    
+    if (diagnostics.uxaMethods.length > 0) {
+      addResult(`📝 Métodos UXA: ${diagnostics.uxaMethods.join(', ')}`);
     }
 
-    // Verificar configuración
-    if (window.CS_CONF) {
-      addResult(`✅ window.CS_CONF existe: ${JSON.stringify(window.CS_CONF)}`);
+    // Estado general
+    if (diagnostics.hasUxa && diagnostics.isReady) {
+      addResult(`✅ ContentSquare completamente funcional`);
+    } else if (diagnostics.hasUxa && !diagnostics.isReady) {
+      addResult(`⚠️ ContentSquare cargado pero no listo`);
     } else {
-      addResult(`⚠️ window.CS_CONF NO existe (puede ser normal)`);
+      addResult(`❌ ContentSquare no disponible`);
     }
   };
 
@@ -217,13 +229,17 @@ export default function ContentSquareTest() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
         <Card className="p-4">
           <h3 className="font-semibold mb-2">📊 Estado de ContentSquare</h3>
-          <div className={`px-3 py-1 rounded-full text-sm font-medium ${
-            isEnabled ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+          <div className={`px-3 py-1 rounded-full text-sm font-medium mb-2 ${
+            isReady ? 'bg-green-100 text-green-800' : 
+            isEnabled ? 'bg-yellow-100 text-yellow-800' : 'bg-red-100 text-red-800'
           }`}>
-            {isEnabled ? '✅ Habilitado' : '❌ Deshabilitado'}
+            {isReady ? '✅ Listo' : isEnabled ? '⏳ Cargando...' : '❌ Deshabilitado'}
           </div>
           {contentSquareId && (
-            <p className="text-sm text-gray-600 mt-2">ID: {contentSquareId}</p>
+            <p className="text-sm text-gray-600">ID: {contentSquareId}</p>
+          )}
+          {retryCount > 0 && (
+            <p className="text-xs text-gray-500">Reintentos: {retryCount}</p>
           )}
         </Card>
 
@@ -243,10 +259,13 @@ export default function ContentSquareTest() {
         <Card className="p-4">
           <h3 className="font-semibold mb-2">🌐 Objeto Global</h3>
           <div className={`px-3 py-1 rounded-full text-sm font-medium ${
-            window.uxa ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+            isReady ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
           }`}>
-            {window.uxa ? '✅ window.uxa OK' : '❌ window.uxa NO'}
+            {isReady ? '✅ window.CS_CONF OK' : '❌ window.CS_CONF NO'}
           </div>
+          <p className="text-xs text-gray-500 mt-1">
+            {isReady ? 'API completamente disponible' : 'API no disponible'}
+          </p>
         </Card>
       </div>
 

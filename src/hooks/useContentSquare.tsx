@@ -1,18 +1,25 @@
-import { useEffect } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 
 // Tipos para ContentSquare
 declare global {
   interface Window {
     CS_CONF?: {
-      id: string;
+      (command: string, action: string, data?: any): void;
+      q?: any[];
     };
+    _csq?: any[];
     uxa?: {
-      send: (eventName: string, data?: any) => void;
-      setCustomVariable: (key: string, value: string | number) => void;
-      setUserId: (userId: string) => void;
-      startTransaction: (name: string) => void;
-      endTransaction: (name: string) => void;
-      tagSession: (tags: string[]) => void;
+      send?: (eventName: string, properties?: any) => void;
+      setCustomVariable?: (key: string, value: string) => void;
+      setUserId?: (userId: string) => void;
+      startTransaction?: (name: string, properties?: any) => void;
+      endTransaction?: (name: string, properties?: any) => void;
+      tagRecording?: (tags: string[]) => void;
+      [key: string]: any;
+    };
+    _hjSettings?: {
+      hjid: number;
+      hjsv: number;
     };
   }
 }
@@ -29,55 +36,59 @@ interface ContentSquareConfig {
 export const useContentSquare = (config?: ContentSquareConfig) => {
   const contentSquareId = config?.id || import.meta.env.VITE_CONTENTSQUARE_ID || null;
   const isEnabled = config?.enabled !== false && !!contentSquareId && contentSquareId !== 'tu-id-contentsquare';
+  const [isReady, setIsReady] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
 
   useEffect(() => {
-    // Solo inicializar si tenemos un ID válido y está habilitado
     if (!isEnabled || !contentSquareId) {
       console.log('📊 ContentSquare: Deshabilitado o ID no configurado');
       return;
     }
 
-    // Verificar si ya está inicializado
-    if (window.uxa) {
-      console.log('📊 ContentSquare: Ya inicializado');
-      return;
-    }
-
-    // ContentSquare se inicializa automáticamente con el script en el HTML
-    // Solo necesitamos esperar a que esté disponible
-    const checkContentSquare = () => {
-      if (window.uxa) {
-        console.log('📊 ContentSquare: Inicializado correctamente con ID:', contentSquareId);
+    const maxRetries = 20; // 10 segundos con intervalos de 500ms
+    
+    const checkAvailability = () => {
+      // Verificar si ContentSquare está completamente disponible
+      if (typeof window !== 'undefined' && 
+          typeof window.CS_CONF === 'function') {
+        console.log('📊 ContentSquare: API completamente disponible');
+        setIsReady(true);
         return true;
       }
+      
+      if (retryCount < maxRetries) {
+        console.log(`⏳ ContentSquare: Reintento ${retryCount + 1}/${maxRetries}`);
+        setRetryCount(prev => prev + 1);
+        setTimeout(checkAvailability, 500);
+      } else {
+        console.error('❌ ContentSquare: No disponible después de múltiples reintentos');
+        console.log('🔍 Diagnóstico:', {
+          hasWindow: typeof window !== 'undefined',
+          hasCS_CONF: typeof window.CS_CONF,
+          csConfQueue: window.CS_CONF && window.CS_CONF.q ? window.CS_CONF.q.length : 'N/A'
+        });
+      }
+      
       return false;
     };
-
-    // Verificar cada 100ms hasta que esté disponible (máximo 5 segundos)
-    let attempts = 0;
-    const maxAttempts = 50;
-    const checkInterval = setInterval(() => {
-      attempts++;
-      if (checkContentSquare() || attempts >= maxAttempts) {
-        clearInterval(checkInterval);
-        if (attempts >= maxAttempts && !window.uxa) {
-          console.warn('📊 ContentSquare: No se pudo inicializar después de 5 segundos');
-        }
-      }
-    }, 100);
-
-    return () => clearInterval(checkInterval);
-  }, [contentSquareId, isEnabled]);
+    
+    if (!isReady) {
+      checkAvailability();
+    }
+  }, [contentSquareId, isEnabled, retryCount, isReady]);
 
   // Funciones del hook
   const sendEvent = (eventName: string, data?: any) => {
-    if (!isEnabled || !window.uxa) {
+    if (!isEnabled || !window.CS_CONF) {
       console.log('📊 ContentSquare: sendEvent ignorado -', eventName, data);
       return;
     }
 
     try {
-      window.uxa.send(eventName, data);
+      window.CS_CONF('send', 'event', {
+        event_name: eventName,
+        ...data
+      });
       console.log('📊 ContentSquare: Evento enviado -', eventName, data);
     } catch (error) {
       console.error('📊 ContentSquare: Error en sendEvent:', error);
@@ -85,13 +96,15 @@ export const useContentSquare = (config?: ContentSquareConfig) => {
   };
 
   const setCustomVariable = (key: string, value: string | number) => {
-    if (!isEnabled || !window.uxa) {
+    if (!isEnabled || !window.CS_CONF) {
       console.log('📊 ContentSquare: setCustomVariable ignorado -', key, value);
       return;
     }
 
     try {
-      window.uxa.setCustomVariable(key, value);
+      window.CS_CONF('send', 'custom', {
+        [key]: String(value)
+      });
       console.log('📊 ContentSquare: Variable personalizada establecida -', key, value);
     } catch (error) {
       console.error('📊 ContentSquare: Error en setCustomVariable:', error);
@@ -99,13 +112,15 @@ export const useContentSquare = (config?: ContentSquareConfig) => {
   };
 
   const setUserId = (userId: string) => {
-    if (!isEnabled || !window.uxa) {
+    if (!isEnabled || !window.CS_CONF) {
       console.log('📊 ContentSquare: setUserId ignorado -', userId);
       return;
     }
 
     try {
-      window.uxa.setUserId(userId);
+      window.CS_CONF('send', 'user', {
+        user_id: userId
+      });
       console.log('📊 ContentSquare: Usuario identificado -', userId);
     } catch (error) {
       console.error('📊 ContentSquare: Error en setUserId:', error);
@@ -113,13 +128,16 @@ export const useContentSquare = (config?: ContentSquareConfig) => {
   };
 
   const startTransaction = (name: string) => {
-    if (!isEnabled || !window.uxa) {
+    if (!isEnabled || !window.CS_CONF) {
       console.log('📊 ContentSquare: startTransaction ignorado -', name);
       return;
     }
 
     try {
-      window.uxa.startTransaction(name);
+      window.CS_CONF('send', 'transaction', {
+        action: 'start',
+        name: name
+      });
       console.log('📊 ContentSquare: Transacción iniciada -', name);
     } catch (error) {
       console.error('📊 ContentSquare: Error en startTransaction:', error);
@@ -127,13 +145,16 @@ export const useContentSquare = (config?: ContentSquareConfig) => {
   };
 
   const endTransaction = (name: string) => {
-    if (!isEnabled || !window.uxa) {
+    if (!isEnabled || !window.CS_CONF) {
       console.log('📊 ContentSquare: endTransaction ignorado -', name);
       return;
     }
 
     try {
-      window.uxa.endTransaction(name);
+      window.CS_CONF('send', 'transaction', {
+        action: 'end',
+        name: name
+      });
       console.log('📊 ContentSquare: Transacción finalizada -', name);
     } catch (error) {
       console.error('📊 ContentSquare: Error en endTransaction:', error);
@@ -141,15 +162,17 @@ export const useContentSquare = (config?: ContentSquareConfig) => {
   };
 
   const tagSession = (tags: string[]) => {
-    if (!isEnabled || !window.uxa) {
+    if (!isEnabled || !window.CS_CONF) {
       console.log('📊 ContentSquare: tagSession ignorado -', tags);
       return;
     }
 
     try {
-      // ContentSquare no tiene tagSession nativo, usamos variables personalizadas
+      // ContentSquare: enviamos las etiquetas como variables personalizadas
       tags.forEach((tag, index) => {
-        window.uxa!.setCustomVariable(`session_tag_${index}`, tag);
+        window.CS_CONF!('send', 'custom', {
+          [`session_tag_${index}`]: tag
+        });
       });
       console.log('📊 ContentSquare: Sesión etiquetada -', tags);
     } catch (error) {
@@ -176,8 +199,24 @@ export const useContentSquare = (config?: ContentSquareConfig) => {
     }
   };
 
+  // Función de diagnóstico
+  const getDiagnostics = useCallback(() => {
+    return {
+      isReady,
+      isEnabled,
+      contentSquareId,
+      retryCount,
+      hasWindow: typeof window !== 'undefined',
+      hasCS_CONF: typeof window.CS_CONF,
+      csConfQueue: window.CS_CONF && window.CS_CONF.q ? window.CS_CONF.q.length : 'N/A',
+      envId: import.meta.env.VITE_CONTENTSQUARE_ID,
+    };
+  }, [isReady, isEnabled, contentSquareId, retryCount]);
+
   return {
     isEnabled,
+    isReady,
+    retryCount,
     sendEvent,
     setCustomVariable,
     setUserId,
@@ -185,6 +224,7 @@ export const useContentSquare = (config?: ContentSquareConfig) => {
     endTransaction,
     tagSession,
     trackAuditEvent,
+    getDiagnostics,
     contentSquareId
   };
 };
