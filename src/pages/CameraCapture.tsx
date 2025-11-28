@@ -8,7 +8,8 @@ import {
   Zap,
   AlertCircle,
   Edit3,
-  X
+  X,
+  RotateCcw
 } from 'lucide-react';
 import jscanify from 'jscanify/src/jscanify';
 
@@ -194,33 +195,42 @@ const CameraCapture: React.FC = () => {
         } else {
           // Si no detecta bien, usar imagen completa y sugerir edición manual
           setScannedImage(canvas.toDataURL('image/jpeg', 0.95));
-          // Establecer esquinas por defecto (toda la imagen)
+          // Establecer esquinas con margen del 10% (mejor práctica)
+          const margin = 0.1;
+          const marginX = canvas.width * margin;
+          const marginY = canvas.height * margin;
           setCorners([
-            { x: 0, y: 0 },
-            { x: canvas.width, y: 0 },
-            { x: canvas.width, y: canvas.height },
-            { x: 0, y: canvas.height }
+            { x: marginX, y: marginY },
+            { x: canvas.width - marginX, y: marginY },
+            { x: canvas.width - marginX, y: canvas.height - marginY },
+            { x: marginX, y: canvas.height - marginY }
           ]);
         }
         stopCamera();
       } catch (e) {
         console.log("Usando captura completa");
         setScannedImage(canvas.toDataURL('image/jpeg', 0.95));
+        const margin = 0.1;
+        const marginX = canvas.width * margin;
+        const marginY = canvas.height * margin;
         setCorners([
-          { x: 0, y: 0 },
-          { x: canvas.width, y: 0 },
-          { x: canvas.width, y: canvas.height },
-          { x: 0, y: canvas.height }
+          { x: marginX, y: marginY },
+          { x: canvas.width - marginX, y: marginY },
+          { x: canvas.width - marginX, y: canvas.height - marginY },
+          { x: marginX, y: canvas.height - marginY }
         ]);
         stopCamera();
       }
     } else {
       setScannedImage(canvas.toDataURL('image/jpeg', 0.95));
+      const margin = 0.1;
+      const marginX = canvas.width * margin;
+      const marginY = canvas.height * margin;
       setCorners([
-        { x: 0, y: 0 },
-        { x: canvas.width, y: 0 },
-        { x: canvas.width, y: canvas.height },
-        { x: 0, y: canvas.height }
+        { x: marginX, y: marginY },
+        { x: canvas.width - marginX, y: marginY },
+        { x: canvas.width - marginX, y: canvas.height - marginY },
+        { x: marginX, y: canvas.height - marginY }
       ]);
       stopCamera();
     }
@@ -264,11 +274,20 @@ const CameraCapture: React.FC = () => {
 
       // Si encontramos un área razonable
       if (maxX - minX > 100 && maxY - minY > 100) {
+        // Aplicar margen si las esquinas están muy cerca de los bordes
+        const edgeThreshold = 20;
+        const margin = 30;
+        
+        const adjustedMinX = minX < edgeThreshold ? minX + margin : minX;
+        const adjustedMinY = minY < edgeThreshold ? minY + margin : minY;
+        const adjustedMaxX = maxX > highlightedCanvas.width - edgeThreshold ? maxX - margin : maxX;
+        const adjustedMaxY = maxY > highlightedCanvas.height - edgeThreshold ? maxY - margin : maxY;
+        
         return [
-          { x: minX, y: minY },
-          { x: maxX, y: minY },
-          { x: maxX, y: maxY },
-          { x: minX, y: maxY }
+          { x: adjustedMinX, y: adjustedMinY },
+          { x: adjustedMaxX, y: adjustedMinY },
+          { x: adjustedMaxX, y: adjustedMaxY },
+          { x: adjustedMinX, y: adjustedMaxY }
         ];
       }
 
@@ -291,6 +310,24 @@ const CameraCapture: React.FC = () => {
     // Aquí iría la lógica para subir a Google Drive
     alert(`✅ Documento guardado: ${categoryName}`);
     navigate('/documents');
+  };
+
+  // Resetear esquinas a posición por defecto
+  const resetCorners = () => {
+    if (!capturedImageData) return;
+    
+    const margin = 0.1;
+    const marginX = capturedImageData.width * margin;
+    const marginY = capturedImageData.height * margin;
+    
+    setCorners([
+      { x: marginX, y: marginY },
+      { x: capturedImageData.width - marginX, y: marginY },
+      { x: capturedImageData.width - marginX, y: capturedImageData.height - marginY },
+      { x: marginX, y: capturedImageData.height - marginY }
+    ]);
+    
+    setTimeout(() => drawCorners(), 10);
   };
 
   // Edición manual de esquinas
@@ -324,10 +361,36 @@ const CameraCapture: React.FC = () => {
     // Redibujar imagen
     ctx.putImageData(capturedImageData, 0, 0);
 
-    // Dibujar líneas entre esquinas
-    ctx.strokeStyle = '#00ff00';
-    ctx.lineWidth = 3;
-    ctx.setLineDash([10, 5]);
+    // Dibujar overlay semi-transparente fuera del área seleccionada
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Crear path del área seleccionada y limpiarla
+    ctx.globalCompositeOperation = 'destination-out';
+    ctx.fillStyle = 'rgba(255, 255, 255, 1)';
+    ctx.beginPath();
+    corners.forEach((corner, i) => {
+      if (i === 0) {
+        ctx.moveTo(corner.x, corner.y);
+      } else {
+        ctx.lineTo(corner.x, corner.y);
+      }
+    });
+    ctx.closePath();
+    ctx.fill();
+    ctx.globalCompositeOperation = 'source-over';
+
+    // Dibujar líneas entre esquinas con animación de pulso
+    const gradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+    gradient.addColorStop(0, '#00ff00');
+    gradient.addColorStop(0.5, '#00ff88');
+    gradient.addColorStop(1, '#00ff00');
+    
+    ctx.strokeStyle = gradient;
+    ctx.lineWidth = 4;
+    ctx.shadowColor = '#00ff00';
+    ctx.shadowBlur = 10;
+    ctx.setLineDash([]);
     ctx.beginPath();
     corners.forEach((corner, i) => {
       if (i === 0) {
@@ -338,13 +401,15 @@ const CameraCapture: React.FC = () => {
     });
     ctx.closePath();
     ctx.stroke();
-    ctx.setLineDash([]);
+    ctx.shadowBlur = 0;
 
     // Dibujar esquinas como "L" gruesas (estilo CamScanner)
     const cornerSize = 60; // Tamaño de la L
     const cornerThickness = 8; // Grosor de la L
 
     corners.forEach((corner, i) => {
+      const isBeingDragged = draggingIndex === i;
+      
       // Determinar dirección de la L según la esquina
       let dx1 = 1, dy1 = 0, dx2 = 0, dy2 = 1;
       
@@ -363,8 +428,8 @@ const CameraCapture: React.FC = () => {
       }
 
       // Dibujar sombra para mejor visibilidad
-      ctx.strokeStyle = 'rgba(0, 0, 0, 0.5)';
-      ctx.lineWidth = cornerThickness + 4;
+      ctx.strokeStyle = 'rgba(0, 0, 0, 0.6)';
+      ctx.lineWidth = cornerThickness + 6;
       ctx.lineCap = 'round';
       ctx.beginPath();
       ctx.moveTo(corner.x + dx1 * 5, corner.y + dy1 * 5);
@@ -375,10 +440,12 @@ const CameraCapture: React.FC = () => {
       ctx.lineTo(corner.x + dx2 * cornerSize + dx2 * 5, corner.y + dy2 * cornerSize + dy2 * 5);
       ctx.stroke();
 
-      // Dibujar L en color verde brillante
-      ctx.strokeStyle = '#00ff00';
-      ctx.lineWidth = cornerThickness;
+      // Dibujar L en color verde brillante (más gruesa si se está arrastrando)
+      ctx.strokeStyle = isBeingDragged ? '#00ffff' : '#00ff00';
+      ctx.lineWidth = isBeingDragged ? cornerThickness + 2 : cornerThickness;
       ctx.lineCap = 'round';
+      ctx.shadowColor = isBeingDragged ? '#00ffff' : '#00ff00';
+      ctx.shadowBlur = isBeingDragged ? 20 : 0;
       
       // Brazo horizontal de la L
       ctx.beginPath();
@@ -391,22 +458,31 @@ const CameraCapture: React.FC = () => {
       ctx.moveTo(corner.x, corner.y);
       ctx.lineTo(corner.x + dx2 * cornerSize, corner.y + dy2 * cornerSize);
       ctx.stroke();
+      
+      ctx.shadowBlur = 0;
 
-      // Círculo pequeño en el centro para indicar el punto exacto
-      ctx.fillStyle = '#00ff00';
+      // Círculo en el centro para indicar el punto exacto (más grande si se arrastra)
+      const circleRadius = isBeingDragged ? 18 : 14;
+      ctx.fillStyle = isBeingDragged ? '#00ffff' : '#00ff00';
       ctx.strokeStyle = '#ffffff';
-      ctx.lineWidth = 3;
+      ctx.lineWidth = 4;
+      ctx.shadowColor = isBeingDragged ? '#00ffff' : '#00ff00';
+      ctx.shadowBlur = isBeingDragged ? 15 : 5;
       ctx.beginPath();
-      ctx.arc(corner.x, corner.y, 12, 0, 2 * Math.PI);
+      ctx.arc(corner.x, corner.y, circleRadius, 0, 2 * Math.PI);
       ctx.fill();
       ctx.stroke();
+      ctx.shadowBlur = 0;
 
       // Número de esquina dentro del círculo
       ctx.fillStyle = '#ffffff';
-      ctx.font = 'bold 14px sans-serif';
+      ctx.font = `bold ${isBeingDragged ? '16px' : '14px'} sans-serif`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
+      ctx.shadowColor = 'rgba(0, 0, 0, 0.8)';
+      ctx.shadowBlur = 3;
       ctx.fillText((i + 1).toString(), corner.x, corner.y);
+      ctx.shadowBlur = 0;
     });
   };
 
@@ -726,10 +802,20 @@ const CameraCapture: React.FC = () => {
                       onClick={cancelEditing}
                       className="flex flex-col items-center gap-2 text-white hover:scale-110 transition-transform"
                     >
-                      <div className="w-16 h-16 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center hover:bg-white/30 transition-colors">
-                        <ArrowLeft className="w-7 h-7" />
+                      <div className="w-14 h-14 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center hover:bg-white/30 transition-colors">
+                        <ArrowLeft className="w-6 h-6" />
                       </div>
-                      <span className="text-sm font-medium">Cancelar</span>
+                      <span className="text-xs font-medium">Cancelar</span>
+                    </button>
+
+                    <button
+                      onClick={resetCorners}
+                      className="flex flex-col items-center gap-2 text-white hover:scale-110 transition-transform"
+                    >
+                      <div className="w-14 h-14 rounded-full bg-orange-500/80 backdrop-blur-sm flex items-center justify-center hover:bg-orange-500 transition-colors shadow-lg">
+                        <RotateCcw className="w-6 h-6" />
+                      </div>
+                      <span className="text-xs font-medium">Resetear</span>
                     </button>
                     
                     <button
