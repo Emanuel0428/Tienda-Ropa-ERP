@@ -7,7 +7,8 @@ import {
   RefreshCw,
   Zap,
   AlertCircle,
-  Edit3
+  Edit3,
+  X
 } from 'lucide-react';
 import jscanify from 'jscanify/src/jscanify';
 
@@ -32,6 +33,7 @@ const CameraCapture: React.FC = () => {
   const [corners, setCorners] = useState<Corner[]>([]);
   const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
   const [capturedImageData, setCapturedImageData] = useState<ImageData | null>(null);
+  const [showInstructions, setShowInstructions] = useState(true);
   
   const videoRef = useRef<HTMLVideoElement>(null);
   const previewCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -294,6 +296,7 @@ const CameraCapture: React.FC = () => {
   // Edición manual de esquinas
   const startEditingCorners = () => {
     setIsEditingCorners(true);
+    setShowInstructions(true); // Mostrar instrucciones al entrar al editor
     
     // Dibujar imagen con esquinas en canvas de edición
     setTimeout(() => {
@@ -337,20 +340,70 @@ const CameraCapture: React.FC = () => {
     ctx.stroke();
     ctx.setLineDash([]);
 
-    // Dibujar esquinas
+    // Dibujar esquinas como "L" gruesas (estilo CamScanner)
+    const cornerSize = 60; // Tamaño de la L
+    const cornerThickness = 8; // Grosor de la L
+
     corners.forEach((corner, i) => {
+      // Determinar dirección de la L según la esquina
+      let dx1 = 1, dy1 = 0, dx2 = 0, dy2 = 1;
+      
+      if (i === 0) { // Top-left
+        dx1 = 1; dy1 = 0;  // Horizontal derecha
+        dx2 = 0; dy2 = 1;  // Vertical abajo
+      } else if (i === 1) { // Top-right
+        dx1 = -1; dy1 = 0; // Horizontal izquierda
+        dx2 = 0; dy2 = 1;  // Vertical abajo
+      } else if (i === 2) { // Bottom-right
+        dx1 = -1; dy1 = 0; // Horizontal izquierda
+        dx2 = 0; dy2 = -1; // Vertical arriba
+      } else { // Bottom-left
+        dx1 = 1; dy1 = 0;  // Horizontal derecha
+        dx2 = 0; dy2 = -1; // Vertical arriba
+      }
+
+      // Dibujar sombra para mejor visibilidad
+      ctx.strokeStyle = 'rgba(0, 0, 0, 0.5)';
+      ctx.lineWidth = cornerThickness + 4;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(corner.x + dx1 * 5, corner.y + dy1 * 5);
+      ctx.lineTo(corner.x + dx1 * cornerSize + dx1 * 5, corner.y + dy1 * cornerSize + dy1 * 5);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(corner.x + dx2 * 5, corner.y + dy2 * 5);
+      ctx.lineTo(corner.x + dx2 * cornerSize + dx2 * 5, corner.y + dy2 * cornerSize + dy2 * 5);
+      ctx.stroke();
+
+      // Dibujar L en color verde brillante
+      ctx.strokeStyle = '#00ff00';
+      ctx.lineWidth = cornerThickness;
+      ctx.lineCap = 'round';
+      
+      // Brazo horizontal de la L
+      ctx.beginPath();
+      ctx.moveTo(corner.x, corner.y);
+      ctx.lineTo(corner.x + dx1 * cornerSize, corner.y + dy1 * cornerSize);
+      ctx.stroke();
+      
+      // Brazo vertical de la L
+      ctx.beginPath();
+      ctx.moveTo(corner.x, corner.y);
+      ctx.lineTo(corner.x + dx2 * cornerSize, corner.y + dy2 * cornerSize);
+      ctx.stroke();
+
+      // Círculo pequeño en el centro para indicar el punto exacto
       ctx.fillStyle = '#00ff00';
       ctx.strokeStyle = '#ffffff';
       ctx.lineWidth = 3;
-      
       ctx.beginPath();
-      ctx.arc(corner.x, corner.y, 30, 0, 2 * Math.PI);
+      ctx.arc(corner.x, corner.y, 12, 0, 2 * Math.PI);
       ctx.fill();
       ctx.stroke();
 
-      // Número de esquina
+      // Número de esquina dentro del círculo
       ctx.fillStyle = '#ffffff';
-      ctx.font = 'bold 20px sans-serif';
+      ctx.font = 'bold 14px sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText((i + 1).toString(), corner.x, corner.y);
@@ -368,7 +421,7 @@ const CameraCapture: React.FC = () => {
     const y = (e.clientY - rect.top) * scaleY;
 
     // Encontrar esquina más cercana
-    const threshold = 50;
+    const threshold = 70;
     const cornerIndex = corners.findIndex(c => 
       Math.sqrt((c.x - x) ** 2 + (c.y - y) ** 2) < threshold
     );
@@ -410,7 +463,7 @@ const CameraCapture: React.FC = () => {
     const x = (touch.clientX - rect.left) * scaleX;
     const y = (touch.clientY - rect.top) * scaleY;
 
-    const threshold = 80; // Mayor threshold para touch
+    const threshold = 100; // Mayor threshold para touch
     const cornerIndex = corners.findIndex(c => 
       Math.sqrt((c.x - x) ** 2 + (c.y - y) ** 2) < threshold
     );
@@ -646,17 +699,25 @@ const CameraCapture: React.FC = () => {
                 </div>
                 
                 {/* Instrucciones de edición */}
-                <div className="absolute top-24 left-0 right-0 z-15 flex justify-center px-4">
-                  <div className="bg-blue-600/90 backdrop-blur-md text-white px-6 py-3 rounded-2xl shadow-lg max-w-md">
-                    <div className="flex items-start gap-3">
-                      <Edit3 className="w-5 h-5 mt-0.5 flex-shrink-0" />
-                      <div className="text-sm">
-                        <p className="font-semibold mb-1">Ajusta las esquinas del documento</p>
-                        <p className="text-xs text-blue-100">Arrastra los círculos verdes numerados a las esquinas del documento</p>
+                {showInstructions && (
+                  <div className="absolute top-24 left-0 right-0 z-15 flex justify-center px-4">
+                    <div className="bg-blue-600/90 backdrop-blur-md text-white px-6 py-3 rounded-2xl shadow-lg max-w-md relative">
+                      <button
+                        onClick={() => setShowInstructions(false)}
+                        className="absolute -top-2 -right-2 w-8 h-8 bg-white rounded-full flex items-center justify-center hover:bg-gray-100 transition-colors shadow-lg"
+                      >
+                        <X className="w-5 h-5 text-gray-700" />
+                      </button>
+                      <div className="flex items-start gap-3">
+                        <Edit3 className="w-5 h-5 mt-0.5 flex-shrink-0" />
+                        <div className="text-sm">
+                          <p className="font-semibold mb-1">Ajusta las esquinas del documento</p>
+                          <p className="text-xs text-blue-100">Arrastra las esquinas verdes a los bordes del documento</p>
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
+                )}
 
                 {/* Controles del editor */}
                 <div className="bg-gradient-to-t from-black/90 via-black/80 to-transparent p-6 pb-8 absolute bottom-0 left-0 right-0 z-20">
