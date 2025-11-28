@@ -11,7 +11,7 @@ import {
   Eye, 
   Trash2,
   Search,
-  Camera
+  Scan
 } from 'lucide-react';
 
 const Documents: React.FC = () => {
@@ -228,28 +228,26 @@ const Documents: React.FC = () => {
               </div>
               
               {/* Botones de acción para esta categoría */}
-              <div className="flex gap-2">
-                <Button 
-                  onClick={() => {
-                    navigate(`/camera-capture?category=${category.id}&categoryName=${encodeURIComponent(category.name)}`);
-                  }}
-                  className="flex items-center gap-2 flex-1"
-                  variant="outline"
-                  size="sm"
-                >
-                  <Camera className="w-4 h-4" />
-                  Escanear
-                </Button>
+              <div className="flex flex-col gap-2">
                 <Button 
                   onClick={() => {
                     setSelectedUploadCategory(category.id);
                     setShowUploadModal(true);
                   }}
-                  className="flex items-center gap-2 flex-1"
+                  className="flex items-center gap-2 w-full"
                   size="sm"
                 >
                   <Upload className="w-4 h-4" />
                   Subir PDF
+                </Button>
+                <Button 
+                  onClick={() => navigate(`/camera-capture?category=${category.id}&categoryName=${encodeURIComponent(category.name)}`)}
+                  className="flex items-center gap-2 w-full"
+                  variant="outline"
+                  size="sm"
+                >
+                  <Scan className="w-4 h-4" />
+                  Escanear
                 </Button>
               </div>
               
@@ -315,28 +313,26 @@ const Documents: React.FC = () => {
               </div>
               
               {/* Botones de acción para esta categoría */}
-              <div className="flex gap-2 mb-2">
-                <Button 
-                  onClick={() => {
-                    navigate(`/camera-capture?category=${category.id}&categoryName=${encodeURIComponent(category.name)}`);
-                  }}
-                  className="flex items-center gap-2 flex-1"
-                  variant="outline"
-                  size="sm"
-                >
-                  <Camera className="w-4 h-4" />
-                  Escanear
-                </Button>
+              <div className="flex flex-col gap-2 mb-2">
                 <Button 
                   onClick={() => {
                     setSelectedUploadCategory(category.id);
                     setShowUploadModal(true);
                   }}
-                  className="flex items-center gap-2 flex-1"
+                  className="flex items-center gap-2 w-full"
                   size="sm"
                 >
                   <Upload className="w-4 h-4" />
                   Subir PDF
+                </Button>
+                <Button 
+                  onClick={() => navigate(`/camera-capture?category=${category.id}&categoryName=${encodeURIComponent(category.name)}`)}
+                  className="flex items-center gap-2 w-full"
+                  variant="outline"
+                  size="sm"
+                >
+                  <Scan className="w-4 h-4" />
+                  Escanear
                 </Button>
               </div>
 

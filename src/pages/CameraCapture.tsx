@@ -1,14 +1,12 @@
-import React, { useState, useRef, useCallback, useEffect } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Button } from '../components/ui/Button';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { 
-  Camera, 
-  Scan, 
   ArrowLeft,
-  RotateCcw,
   Check,
-  X
+  RefreshCw
 } from 'lucide-react';
+import jscanify from 'jscanify/src/jscanify';
 
 const CameraCapture: React.FC = () => {
   const [searchParams] = useSearchParams();
@@ -20,314 +18,262 @@ const CameraCapture: React.FC = () => {
   const [isScanning, setIsScanning] = useState(false);
   const [scannedImage, setScannedImage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [cvLoaded, setCvLoaded] = useState(false);
   
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const scannerRef = useRef<any>(null);
+  const animationFrameRef = useRef<number | null>(null);
 
-  // Función para inicializar cámara
-  const startCamera = useCallback(async () => {
+  useEffect(() => {
+    // Check if OpenCV is loaded
+    const checkCv = setInterval(() => {
+      if ((window as any).cv && (window as any).cv.Mat) {
+        setCvLoaded(true);
+        clearInterval(checkCv);
+        try {
+          scannerRef.current = new jscanify();
+          console.log("OpenCV loaded and jscanify initialized");
+        } catch (e) {
+          console.error("Error initializing jscanify:", e);
+        }
+      }
+    }, 100);
+
+    // Timeout to allow using camera even if OpenCV fails
+    const cvTimeout = setTimeout(() => {
+      if (!scannerRef.current) {
+        console.log("OpenCV load timeout - enabling basic camera");
+        setCvLoaded(true); // Enable UI anyway
+        clearInterval(checkCv);
+      }
+    }, 5000);
+
+    startCamera();
+
+    return () => {
+      clearInterval(checkCv);
+      clearTimeout(cvTimeout);
+      stopCamera();
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
+    };
+  }, []);
+
+  const startCamera = async () => {
     try {
       setError(null);
-      console.log('🎥 Iniciando proceso de cámara...');
-      
-      // Verificar disponibilidad de getUserMedia
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        throw new Error('Tu navegador no soporta acceso a la cámara. Prueba con Chrome o Firefox.');
-      }
-
-      // Verificar permisos primero
-      console.log('🔒 Verificando permisos de cámara...');
-      
-      try {
-        const permissions = await navigator.permissions.query({ name: 'camera' as PermissionName });
-        console.log('🔒 Estado de permisos:', permissions.state);
-        
-        if (permissions.state === 'denied') {
-          throw new Error('Permisos de cámara denegados. Ve a configuración del navegador y permite acceso a la cámara.');
+      // Try to get the back camera
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { 
+          facingMode: 'environment',
+          width: { ideal: 1920 },
+          height: { ideal: 1080 }
         }
-      } catch (permError) {
-        console.log('⚠️ No se pudo verificar permisos (normal en algunos navegadores)');
-      }
-
-      console.log('🎥 Solicitando acceso a la cámara...');
-      setError('Solicitando permisos de cámara...');
-
-      // Intentar con configuración simple primero
-      let stream: MediaStream;
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: { 
-            facingMode: 'environment',
-            width: { ideal: 1280, min: 640 },
-            height: { ideal: 720, min: 480 }
-          }
-        });
-      } catch (envError) {
-        console.log('⚠️ Fallo con cámara trasera, intentando con cualquier cámara...');
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: { 
-            width: { ideal: 640, min: 320 },
-            height: { ideal: 480, min: 240 }
-          }
-        });
-      }
+      });
       
       streamRef.current = stream;
-      console.log('🎥 Cámara obtenida exitosamente');
-      console.log('🎥 Tracks de video:', stream.getVideoTracks().length);
-      
-      if (stream.getVideoTracks().length === 0) {
-        throw new Error('No se encontraron pistas de video en el stream');
-      }
-      
-      setError(null);
-      
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
-        
-        videoRef.current.onloadedmetadata = async () => {
-          try {
-            await videoRef.current?.play();
-            console.log('🎥 Video reproduciéndose');
-            setIsScanning(true);
-          } catch (playError) {
-            console.error('Error en play:', playError);
-            // Aún así mostrar el video
-            setIsScanning(true);
-          }
+        videoRef.current.onloadedmetadata = () => {
+          videoRef.current?.play();
+          setIsScanning(true);
+          processVideo();
         };
       }
-    } catch (error: any) {
-      console.error('🎥 Error accessing camera:', error);
-      setError(error.message || 'Error al acceder a la cámara');
+    } catch (err) {
+      console.error("Error accessing camera:", err);
+      // Fallback to any camera if environment fails
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+            video: true
+        });
+        streamRef.current = stream;
+        if (videoRef.current) {
+            videoRef.current.srcObject = stream;
+            videoRef.current.onloadedmetadata = () => {
+            videoRef.current?.play();
+            setIsScanning(true);
+            processVideo();
+            };
+        }
+      } catch (e) {
+        setError("No se pudo acceder a la cámara. Asegúrate de dar permisos.");
+      }
     }
-  }, []);
+  };
 
-  // Función para capturar foto
-  const capturePhoto = useCallback(() => {
-    if (!videoRef.current || !canvasRef.current) return;
-
-    const canvas = canvasRef.current;
-    const video = videoRef.current;
-    const context = canvas.getContext('2d');
-    
-    if (!context) return;
-
-    // Configurar canvas con las dimensiones del video
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    
-    // Dibujar el frame actual del video
-    context.drawImage(video, 0, 0);
-    
-    // Convertir a imagen
-    const imageData = canvas.toDataURL('image/jpeg', 0.9);
-    setScannedImage(imageData);
-    
-    console.log('📸 Foto capturada');
-  }, []);
-
-  // Función para detener cámara
-  const stopCamera = useCallback(() => {
+  const stopCamera = () => {
     if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => {
-        track.stop();
-        console.log('🎥 Track detenido');
-      });
+      streamRef.current.getTracks().forEach(track => track.stop());
       streamRef.current = null;
     }
     setIsScanning(false);
-  }, []);
-
-  // Función para confirmar y volver
-  const confirmCapture = () => {
-    // Aquí podrías enviar la imagen al servidor
-    console.log('✅ Imagen confirmada para categoría:', category);
-    alert(`¡Documento escaneado exitosamente para ${categoryName}!`);
-    stopCamera();
-    navigate('/documents');
   };
 
-  // Función para reiniciar
-  const retakePhoto = () => {
+  const processVideo = () => {
+    if (!videoRef.current || !canvasRef.current || !isScanning) return;
+
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+
+    if (!ctx) return;
+
+    // Match canvas size to video size
+    if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+    }
+
+    // Clear canvas before drawing
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    // Draw video frame to canvas
+    ctx.drawImage(video, 0, 0);
+    
+    // Only try to highlight if scanner is initialized (OpenCV loaded)
+    if (scannerRef.current) {
+        try {
+            scannerRef.current.highlightPaper(canvas);
+        } catch (e) {
+            // Ignore errors during processing
+        }
+    }
+
+    animationFrameRef.current = requestAnimationFrame(processVideo);
+  };
+
+  const handleCapture = () => {
+    if (!videoRef.current || !scannerRef.current) {
+        // If scanner not ready, just capture the raw image
+        if (videoRef.current) {
+            const canvas = document.createElement('canvas');
+            canvas.width = videoRef.current.videoWidth;
+            canvas.height = videoRef.current.videoHeight;
+            const ctx = canvas.getContext('2d');
+            ctx?.drawImage(videoRef.current, 0, 0);
+            setScannedImage(canvas.toDataURL('image/jpeg'));
+            stopCamera();
+        }
+        return;
+    }
+
+    // Pause processing
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current);
+    }
+
+    const video = videoRef.current;
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    
+    ctx.drawImage(video, 0, 0);
+
+    try {
+      // Extract the paper
+      const resultCanvas = scannerRef.current.extractPaper(canvas, video.videoWidth, video.videoHeight);
+      setScannedImage(resultCanvas.toDataURL('image/jpeg'));
+      stopCamera();
+    } catch (e) {
+      console.error("Error extracting paper:", e);
+      // Fallback to full image if extraction fails
+      setScannedImage(canvas.toDataURL('image/jpeg'));
+      stopCamera();
+    }
+  };
+
+  const handleRetake = () => {
     setScannedImage(null);
     startCamera();
   };
 
-  // Función para cancelar
-  const cancelCapture = () => {
-    stopCamera();
+  const handleConfirm = () => {
+    // Here you would typically upload the image
+    // For now, we'll just navigate back or show a success message
+    console.log(`Procesando imagen para la categoría: ${category}`);
+    alert(`Documento escaneado para ${categoryName} y listo para procesar.`);
     navigate('/documents');
   };
 
-  // Auto-iniciar cámara cuando se monta el componente
-  useEffect(() => {
-    startCamera();
-    
-    // Timeout para mostrar ayuda si la cámara no se inicia
-    const timeoutId = setTimeout(() => {
-      if (!isScanning && !scannedImage && !error) {
-        setError('La cámara está tardando mucho en iniciarse. Verifica que hayas dado permisos o intenta manualmente.');
-      }
-    }, 10000); // 10 segundos
-    
-    return () => {
-      clearTimeout(timeoutId);
-      stopCamera();
-    };
-  }, [startCamera, stopCamera, isScanning, scannedImage, error]);
-
   return (
-    <div className="min-h-screen bg-black flex flex-col">
+    <div className="fixed inset-0 bg-black z-50 flex flex-col">
       {/* Header */}
-      <div className="bg-white shadow-sm p-4 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <Button 
-            variant="ghost" 
-            size="sm"
-            onClick={cancelCapture}
-          >
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            Volver
-          </Button>
-          <div>
-            <h1 className="text-lg font-semibold text-gray-900">Escanear Documento</h1>
-            <p className="text-sm text-gray-600">{categoryName}</p>
-            {location.protocol !== 'https:' && location.hostname !== 'localhost' && (
-              <p className="text-xs text-orange-600 mt-1">
-                ⚠️ Cámara requiere HTTPS o localhost
-              </p>
-            )}
-          </div>
-        </div>
+      <div className="bg-black/50 text-white p-4 flex justify-between items-center absolute top-0 left-0 right-0 z-10">
+        <Button variant="ghost" size="sm" onClick={() => navigate('/documents')} className="text-white">
+          <ArrowLeft className="w-6 h-6" />
+        </Button>
+        <span className="font-medium">Escanear: {categoryName}</span>
+        <div className="w-10"></div>
       </div>
 
-      {/* Content */}
-      <div className="flex-1 flex flex-col items-center justify-center p-4">
+      {/* Main Content */}
+      <div className="flex-1 relative flex items-center justify-center bg-gray-900 overflow-hidden">
         {error ? (
-          <div className="text-center text-white max-w-md">
-            <div className="bg-red-600 rounded-lg p-6 mb-4">
-              <X className="w-12 h-12 mx-auto mb-3" />
-              <h3 className="text-lg font-semibold mb-2">
-                {error.includes('Solicitando') ? 'Esperando permisos...' : 'Error de Cámara'}
-              </h3>
-              <p className="text-sm">{error}</p>
-            </div>
-            
-            <div className="space-y-3">
-              <Button onClick={startCamera} variant="outline" className="bg-white text-black w-full">
-                <Camera className="w-4 h-4 mr-2" />
-                Intentar de Nuevo
-              </Button>
-              
-              <div className="text-xs text-gray-300 space-y-2">
-                <p><strong>¿No aparece el popup de permisos?</strong></p>
-                <p>• Verifica que estés usando HTTPS o localhost</p>
-                <p>• Busca el ícono de cámara 📷 en la barra de direcciones</p>
-                <p>• Ve a Configuración del navegador → Privacidad → Permisos de cámara</p>
-                <p>• Prueba con Chrome o Firefox</p>
-                <p>• Asegúrate de que no hay otra app usando la cámara</p>
-              </div>
-              
-              <Button onClick={cancelCapture} variant="ghost" className="text-white w-full mt-4">
-                Cancelar
-              </Button>
-            </div>
+          <div className="text-white text-center p-4">
+            <p className="text-red-400 mb-4">{error}</p>
+            <Button onClick={startCamera} variant="outline" className="text-white border-white">
+              Reintentar
+            </Button>
           </div>
         ) : scannedImage ? (
-          <div className="text-center">
-            <div className="mb-6">
-              <img 
-                src={scannedImage} 
-                alt="Documento escaneado" 
-                className="max-w-sm max-h-96 mx-auto rounded-lg shadow-lg"
-              />
-            </div>
-            <div className="flex gap-4 justify-center">
-              <Button 
-                onClick={retakePhoto} 
-                variant="outline"
-                className="bg-white text-black"
-              >
-                <RotateCcw className="w-4 h-4 mr-2" />
-                Tomar Otra
-              </Button>
-              <Button onClick={confirmCapture} className="bg-green-600 text-white">
-                <Check className="w-4 h-4 mr-2" />
-                Confirmar
-              </Button>
-            </div>
-          </div>
+          <img src={scannedImage} alt="Scanned" className="max-w-full max-h-full object-contain" />
         ) : (
-          <div className="text-center text-white">
-            {!isScanning ? (
-              <div className="mb-6 max-w-md text-center">
-                <Camera className="w-16 h-16 text-blue-400 animate-pulse mx-auto mb-4" />
-                <h3 className="text-xl font-semibold mb-2">Iniciando Cámara...</h3>
-                <p className="text-gray-300 mb-4">
-                  Permite el acceso a la cámara cuando se solicite
-                </p>
-                
-                <div className="space-y-3">
-                  <Button 
-                    onClick={startCamera} 
-                    className="bg-blue-600 text-white w-full"
-                  >
-                    <Camera className="w-4 h-4 mr-2" />
-                    Activar Cámara Manualmente
-                  </Button>
-                  
-                  <div className="text-xs text-gray-400 space-y-1">
-                    <p>💡 <strong>Tip:</strong> Busca el ícono 📷 en tu navegador</p>
-                    <p>📱 En móvil: puede aparecer en la parte superior</p>
-                    <p>💻 En PC: generalmente a la izquierda de la URL</p>
-                  </div>
+          <>
+            <video 
+              ref={videoRef} 
+              className="absolute inset-0 w-full h-full object-cover" 
+              playsInline 
+              muted 
+            />
+            <canvas 
+              ref={canvasRef} 
+              className="absolute inset-0 w-full h-full object-contain" 
+            />
+            {!cvLoaded && (
+                <div className="absolute inset-0 flex items-center justify-center bg-black/50 z-20 pointer-events-none">
+                    <div className="text-white bg-black/50 px-4 py-2 rounded-full">Cargando motor de escaneo...</div>
                 </div>
-              </div>
-            ) : (
-              <>
-                {/* Video Container */}
-                <div className="relative mb-6">
-                  <video 
-                    ref={videoRef} 
-                    className="w-full max-w-sm mx-auto rounded-lg shadow-lg"
-                    autoPlay 
-                    playsInline
-                    muted
-                    style={{ maxHeight: '400px' }}
-                  />
-                  
-                  {/* Overlay guide */}
-                  <div className="absolute inset-4 border-2 border-white border-dashed rounded-lg flex items-center justify-center pointer-events-none">
-                    <div className="bg-black bg-opacity-50 px-3 py-1 rounded text-sm">
-                      Posiciona el documento aquí
-                    </div>
-                  </div>
-                </div>
-
-                {/* Controls */}
-                <div className="flex gap-4 justify-center">
-                  <Button onClick={cancelCapture} variant="ghost" className="text-white">
-                    Cancelar
-                  </Button>
-                  <Button 
-                    onClick={capturePhoto} 
-                    size="lg"
-                    className="bg-blue-600 text-white"
-                  >
-                    <Scan className="w-5 h-5 mr-2" />
-                    Capturar
-                  </Button>
-                </div>
-              </>
             )}
-          </div>
+          </>
         )}
       </div>
 
-      {/* Canvas oculto para captura */}
-      <canvas ref={canvasRef} style={{ display: 'none' }} />
+      {/* Controls */}
+      <div className="bg-black/80 p-6 pb-8">
+        <div className="flex justify-center items-center gap-8">
+          {scannedImage ? (
+            <>
+              <Button 
+                onClick={handleRetake}
+                variant="outline" 
+                className="rounded-full w-14 h-14 p-0 border-white text-white hover:bg-white/20"
+              >
+                <RefreshCw className="w-6 h-6" />
+              </Button>
+              <Button 
+                onClick={handleConfirm}
+                className="rounded-full w-16 h-16 p-0 bg-green-600 hover:bg-green-700 text-white"
+              >
+                <Check className="w-8 h-8" />
+              </Button>
+            </>
+          ) : (
+            <Button 
+              onClick={handleCapture}
+              disabled={!cvLoaded}
+              className={`rounded-full w-20 h-20 p-0 bg-white hover:bg-gray-200 border-4 border-gray-300 ${!cvLoaded ? 'opacity-50 cursor-not-allowed' : ''}`}
+            >
+              <div className="w-16 h-16 rounded-full bg-white border-2 border-black"></div>
+            </Button>
+          )}
+        </div>
+      </div>
     </div>
   );
 };
