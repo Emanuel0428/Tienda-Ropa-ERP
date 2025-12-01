@@ -358,16 +358,17 @@ const CameraCapture: React.FC = () => {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // Redibujar imagen
+    // Redibujar imagen completamente visible
     ctx.putImageData(capturedImageData, 0, 0);
 
-    // Dibujar overlay semi-transparente fuera del área seleccionada
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+    // Dibujar overlay semi-transparente SOLO fuera del área seleccionada
+    // Primero llenar todo el canvas
+    ctx.save();
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-    // Crear path del área seleccionada y limpiarla
+    
+    // Luego crear un "recorte" del área interna para mostrar la imagen
     ctx.globalCompositeOperation = 'destination-out';
-    ctx.fillStyle = 'rgba(255, 255, 255, 1)';
     ctx.beginPath();
     corners.forEach((corner, i) => {
       if (i === 0) {
@@ -378,9 +379,9 @@ const CameraCapture: React.FC = () => {
     });
     ctx.closePath();
     ctx.fill();
-    ctx.globalCompositeOperation = 'source-over';
+    ctx.restore();
 
-    // Dibujar líneas entre esquinas con animación de pulso
+    // Dibujar líneas entre esquinas con gradiente brillante
     const gradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
     gradient.addColorStop(0, '#00ff00');
     gradient.addColorStop(0.5, '#00ff88');
@@ -760,7 +761,8 @@ const CameraCapture: React.FC = () => {
             {isEditingCorners ? (
               /* Editor de esquinas */
               <div className="h-full flex flex-col bg-gray-900">
-                <div className="flex-1 flex items-center justify-center p-4 overflow-hidden">
+                {/* Canvas con padding en la parte inferior para evitar que se solape con los controles */}
+                <div className="flex-1 flex items-center justify-center p-4 pb-32 overflow-hidden">
                   <canvas 
                     ref={editCanvasRef}
                     className="max-w-full max-h-full object-contain cursor-crosshair touch-none"
@@ -796,37 +798,39 @@ const CameraCapture: React.FC = () => {
                 )}
 
                 {/* Controles del editor */}
-                <div className="bg-gradient-to-t from-black/90 via-black/80 to-transparent p-6 pb-8 absolute bottom-0 left-0 right-0 z-20">
-                  <div className="flex justify-center items-center gap-4">
-                    <button
-                      onClick={cancelEditing}
-                      className="flex flex-col items-center gap-2 text-white hover:scale-110 transition-transform"
-                    >
-                      <div className="w-14 h-14 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center hover:bg-white/30 transition-colors">
-                        <ArrowLeft className="w-6 h-6" />
-                      </div>
-                      <span className="text-xs font-medium">Cancelar</span>
-                    </button>
+                <div className="absolute bottom-0 left-0 right-0 z-20 pointer-events-none">
+                  <div className="bg-gradient-to-t from-black/90 via-black/80 to-transparent p-6 pb-8">
+                    <div className="flex justify-center items-center gap-4 pointer-events-auto">
+                      <button
+                        onClick={cancelEditing}
+                        className="flex flex-col items-center gap-2 text-white hover:scale-110 transition-transform"
+                      >
+                        <div className="w-14 h-14 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center hover:bg-white/30 transition-colors">
+                          <ArrowLeft className="w-6 h-6" />
+                        </div>
+                        <span className="text-xs font-medium">Cancelar</span>
+                      </button>
 
-                    <button
-                      onClick={resetCorners}
-                      className="flex flex-col items-center gap-2 text-white hover:scale-110 transition-transform"
-                    >
-                      <div className="w-14 h-14 rounded-full bg-orange-500/80 backdrop-blur-sm flex items-center justify-center hover:bg-orange-500 transition-colors shadow-lg">
-                        <RotateCcw className="w-6 h-6" />
-                      </div>
-                      <span className="text-xs font-medium">Resetear</span>
-                    </button>
-                    
-                    <button
-                      onClick={applyManualCrop}
-                      className="flex flex-col items-center gap-2 text-white hover:scale-110 transition-transform"
-                    >
-                      <div className="w-20 h-20 rounded-full bg-blue-600 flex items-center justify-center shadow-lg shadow-blue-600/50 hover:bg-blue-700 transition-all">
-                        <Check className="w-10 h-10" />
-                      </div>
-                      <span className="text-sm font-semibold">Aplicar</span>
-                    </button>
+                      <button
+                        onClick={resetCorners}
+                        className="flex flex-col items-center gap-2 text-white hover:scale-110 transition-transform"
+                      >
+                        <div className="w-14 h-14 rounded-full bg-orange-500/80 backdrop-blur-sm flex items-center justify-center hover:bg-orange-500 transition-colors shadow-lg">
+                          <RotateCcw className="w-6 h-6" />
+                        </div>
+                        <span className="text-xs font-medium">Resetear</span>
+                      </button>
+                      
+                      <button
+                        onClick={applyManualCrop}
+                        className="flex flex-col items-center gap-2 text-white hover:scale-110 transition-transform"
+                      >
+                        <div className="w-20 h-20 rounded-full bg-blue-600 flex items-center justify-center shadow-lg shadow-blue-600/50 hover:bg-blue-700 transition-all">
+                          <Check className="w-10 h-10" />
+                        </div>
+                        <span className="text-sm font-semibold">Aplicar</span>
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
