@@ -9,9 +9,13 @@ import {
   AlertCircle,
   Edit3,
   X,
-  RotateCcw
+  RotateCcw,
+  Upload,
+  Loader2
 } from 'lucide-react';
 import jscanify from 'jscanify/src/jscanify';
+import { initializeGoogleDrive, uploadPDFToDrive } from '../services/googleDriveService';
+import { convertImageToPDF, generateFileName } from '../utils/pdfConverter';
 
 interface Corner {
   x: number;
@@ -24,6 +28,9 @@ const CameraCapture: React.FC = () => {
   
   const categoryName = searchParams.get('categoryName') || 'Documentos';
   
+  // ID de carpeta de Drive (por ahora usamos la de prueba)
+  const DRIVE_FOLDER_ID = '10WJQndXOOPA8ZhBXxtEr5bVE9JNAk0Zd';
+  
   const [isScanning, setIsScanning] = useState(false);
   const [scannedImage, setScannedImage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -35,6 +42,8 @@ const CameraCapture: React.FC = () => {
   const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
   const [capturedImageData, setCapturedImageData] = useState<ImageData | null>(null);
   const [showInstructions, setShowInstructions] = useState(true);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
   
   const videoRef = useRef<HTMLVideoElement>(null);
   const previewCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -44,13 +53,19 @@ const CameraCapture: React.FC = () => {
   const animationFrameRef = useRef<number | null>(null);
 
   useEffect(() => {
+    // Inicializar Google Drive API
+    initializeGoogleDrive().catch(err => {
+      console.error('Error inicializando Google Drive:', err);
+    });
+  }, []);
+
+  useEffect(() => {
     const checkCv = setInterval(() => {
       if ((window as any).cv && (window as any).cv.Mat) {
         setCvLoaded(true);
         clearInterval(checkCv);
         try {
           scannerRef.current = new jscanify();
-          console.log("✅ Scanner inicializado");
         } catch (e) {
           console.error("Error inicializando scanner:", e);
         }
@@ -59,7 +74,6 @@ const CameraCapture: React.FC = () => {
 
     const cvTimeout = setTimeout(() => {
       if (!scannerRef.current) {
-        console.log("⚠️ Modo cámara básico");
         setCvLoaded(true);
         clearInterval(checkCv);
       }
@@ -208,7 +222,7 @@ const CameraCapture: React.FC = () => {
         }
         stopCamera();
       } catch (e) {
-        console.log("Usando captura completa");
+        // Modo fallback: captura completa sin detección
         setScannedImage(canvas.toDataURL('image/jpeg', 0.95));
         const margin = 0.1;
         const marginX = canvas.width * margin;
@@ -306,10 +320,51 @@ const CameraCapture: React.FC = () => {
     startCamera();
   };
 
-  const handleConfirm = () => {
-    // Aquí iría la lógica para subir a Google Drive
-    alert(`✅ Documento guardado: ${categoryName}`);
-    navigate('/documents');
+  const handleConfirm = async () => {
+    if (!scannedImage) {
+      alert('❌ No hay imagen para subir');
+      return;
+    }
+
+    try {
+      setIsUploading(true);
+      setUploadProgress(0);
+
+      // Generar nombre de archivo
+      const fileName = generateFileName(categoryName);
+
+      // Convertir imagen a PDF
+      setUploadProgress(20);
+      const pdfBlob = await convertImageToPDF(scannedImage, fileName);
+
+      // Subir a Google Drive (el servicio manejará la autenticación)
+      setUploadProgress(40);
+      
+      await uploadPDFToDrive(
+        pdfBlob,
+        fileName,
+        DRIVE_FOLDER_ID,
+        (progress) => {
+          // Mapear progreso de 40% a 90%
+          const mappedProgress = 40 + (progress * 0.5);
+          setUploadProgress(mappedProgress);
+        }
+      );
+
+      setUploadProgress(100);
+
+      // Mostrar éxito
+      alert(`✅ Documento "${fileName}" subido exitosamente a Google Drive!`);
+      
+      // Navegar de vuelta
+      navigate('/documents');
+    } catch (error: any) {
+      console.error('❌ Error subiendo documento:', error);
+      alert(`❌ Error al subir documento: ${error.message || 'Error desconocido'}`);
+      
+      setIsUploading(false);
+      setUploadProgress(0);
+    }
   };
 
   // Resetear esquinas a posición por defecto
@@ -505,6 +560,8 @@ const CameraCapture: React.FC = () => {
 
     if (cornerIndex !== -1) {
       setDraggingIndex(cornerIndex);
+      // Ocultar instrucciones cuando el usuario empieza a arrastrar
+      setShowInstructions(false);
     }
   };
 
@@ -547,6 +604,8 @@ const CameraCapture: React.FC = () => {
 
     if (cornerIndex !== -1) {
       setDraggingIndex(cornerIndex);
+      // Ocultar instrucciones cuando el usuario empieza a arrastrar
+      setShowInstructions(false);
       e.preventDefault();
     }
   };
@@ -936,12 +995,46 @@ const CameraCapture: React.FC = () => {
               
               <button
                 onClick={handleConfirm}
-                className="flex flex-col items-center gap-2 text-white hover:scale-110 transition-transform"
+                disabled={isUploading}
+                className={`flex flex-col items-center gap-2 text-white transition-transform ${
+                  isUploading ? 'opacity-75 cursor-not-allowed' : 'hover:scale-110'
+                }`}
               >
-                <div className="w-20 h-20 rounded-full bg-green-600 flex items-center justify-center shadow-lg shadow-green-600/50 hover:bg-green-700 transition-all">
-                  <Check className="w-10 h-10" />
+                <div className="w-20 h-20 rounded-full bg-green-600 flex items-center justify-center shadow-lg shadow-green-600/50 hover:bg-green-700 transition-all relative">
+                  {isUploading ? (
+                    <>
+                      <Loader2 className="w-10 h-10 animate-spin" />
+                      {/* Círculo de progreso */}
+                      <svg className="absolute inset-0 w-full h-full -rotate-90">
+                        <circle
+                          cx="50%"
+                          cy="50%"
+                          r="38"
+                          fill="none"
+                          stroke="#ffffff40"
+                          strokeWidth="4"
+                        />
+                        <circle
+                          cx="50%"
+                          cy="50%"
+                          r="38"
+                          fill="none"
+                          stroke="#ffffff"
+                          strokeWidth="4"
+                          strokeDasharray={`${2 * Math.PI * 38}`}
+                          strokeDashoffset={`${2 * Math.PI * 38 * (1 - uploadProgress / 100)}`}
+                          strokeLinecap="round"
+                          className="transition-all duration-300"
+                        />
+                      </svg>
+                    </>
+                  ) : (
+                    <Upload className="w-10 h-10" />
+                  )}
                 </div>
-                <span className="text-sm font-semibold">Confirmar</span>
+                <span className="text-sm font-semibold">
+                  {isUploading ? `Subiendo ${uploadProgress}%` : 'Subir a Drive'}
+                </span>
               </button>
             </>
           ) : !isEditingCorners && (
