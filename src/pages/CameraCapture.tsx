@@ -81,6 +81,24 @@ const CameraCapture: React.FC = () => {
 
     startCamera();
 
+    // Agregar listeners táctiles nativos para evitar el error de passive event
+    const canvas = editCanvasRef.current;
+    if (canvas) {
+      const touchMoveHandler = (e: TouchEvent) => {
+        if (draggingIndex !== null && e.touches.length > 0) {
+          e.preventDefault();
+        }
+      };
+      
+      canvas.addEventListener('touchmove', touchMoveHandler, { passive: false });
+      
+      return () => {
+        canvas.removeEventListener('touchmove', touchMoveHandler);
+        clearInterval(checkCv);
+        clearTimeout(cvTimeout);
+      };
+    }
+
     return () => {
       clearInterval(checkCv);
       clearTimeout(cvTimeout);
@@ -360,7 +378,21 @@ const CameraCapture: React.FC = () => {
       navigate('/documents');
     } catch (error: any) {
       console.error('❌ Error subiendo documento:', error);
-      alert(`❌ Error al subir documento: ${error.message || 'Error desconocido'}`);
+      
+      // Mensajes más claros para el usuario
+      let errorMessage = 'Error desconocido';
+      
+      if (error.message) {
+        errorMessage = error.message;
+      } else if (error.error === 'access_denied') {
+        errorMessage = 'Acceso denegado por Google.\n\nPor favor verifica:\n1. Tu correo debe estar en la lista de usuarios de prueba\n2. Ve a Google Cloud Console\n3. APIs & Services → OAuth consent screen → Test users';
+      } else if (error.error === 'popup_closed_by_user') {
+        errorMessage = 'Popup cerrado. Por favor intenta de nuevo y completa la autenticación.';
+      } else if (error.error === 'server_error') {
+        errorMessage = 'Error del servidor de Google.\n\nAsegúrate de que tu correo esté autorizado en Google Cloud Console (Test users).';
+      }
+      
+      alert(`❌ Error al subir documento:\n\n${errorMessage}`);
       
       setIsUploading(false);
       setUploadProgress(0);
@@ -606,7 +638,6 @@ const CameraCapture: React.FC = () => {
       setDraggingIndex(cornerIndex);
       // Ocultar instrucciones cuando el usuario empieza a arrastrar
       setShowInstructions(false);
-      e.preventDefault();
     }
   };
 
@@ -626,7 +657,6 @@ const CameraCapture: React.FC = () => {
     setCorners(newCorners);
     
     drawCorners();
-    e.preventDefault();
   };
 
   const handleCanvasTouchEnd = () => {

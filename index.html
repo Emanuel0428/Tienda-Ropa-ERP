@@ -43,11 +43,15 @@
     
     <!-- ContentSquare -->
     <script>
-      (function(c,o,n,t,e,n,t,s,q,u,a,r,e){c[e]=c[e]||function(){(c[e].q=c[e].q||[]).push(arguments)};
-      c['_csq']=c['_csq']||[];c['_csq'].push(e);t=o.createElement(n);t.async=1;
-      t.src="//t.contentsquare.net/"+s+"/"+q+".js";
-      a=o.getElementsByTagName(n)[0];a.parentNode.insertBefore(t,a);
-      })(window,document,'script','https','CS_CONF','2544eebed02b8');
+      (function(c,o,n,t,e,n,t,s,q,u,a,r,e){
+        c[e]=c[e]||function(){(c[e].q=c[e].q||[]).push(arguments)};
+        c['_csq']=c['_csq']||[];c['_csq'].push(e);
+        t=o.createElement(n);t.async=1;
+        t.src="//t.contentsquare.net/2544eebed02b8/"+q+".js";
+        a=o.getElementsByTagName(n)[0];
+        if(a&&a.parentNode){a.parentNode.insertBefore(t,a);}
+        else{o.head.appendChild(t);}
+      })(window,document,'script','https','CS_CONF','uxa');
     </script>
   </head>
   <body>
