@@ -23,7 +23,8 @@ import {
   Plus,
   History,
   HelpCircle,
-  PieChart
+  PieChart,
+  Settings
 } from 'lucide-react';
 import { User } from '../../types';
 
@@ -38,11 +39,12 @@ const Sidebar: React.FC<SidebarProps> = ({ user }) => {
   const location = useLocation();
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [auditoriaExpanded, setAuditoriaExpanded] = useState(false);
+  const [documentosExpanded, setDocumentosExpanded] = useState(false);
 
   const getMenuItems = () => {
     const baseItems = [
       { id: 'dashboard', label: 'Dashboard', icon: Home, path: '/dashboard' },
-      { id: 'documents', label: 'Documentos', icon: FileUp, path: '/documents' },
+      // Documentos ya no es un item directo, ahora es un desplegable
       { id: 'tasks', label: 'Tareas', icon: CheckSquare, path: '/tasks' },
       { id: 'sales', label: 'Ventas', icon: ShoppingCart, path: '/sales' },
       { id: 'sales-summary', label: 'Resumen Ventas', icon: BarChart3, path: '/sales-summary' },
@@ -93,10 +95,19 @@ const Sidebar: React.FC<SidebarProps> = ({ user }) => {
     ];
   };
 
+  // Opciones del menú de documentos
+  const getDocumentosOptions = () => {
+    return [
+      { id: 'subir-documentos', label: 'Subir Documentos', icon: FileUp, path: '/documents' },
+      { id: 'config-drive', label: 'Configuración Drive', icon: Settings, path: '/drive-config' }
+    ];
+  };
+
   const handleNavigation = (path: string) => {
     navigate(path);
     setIsMobileOpen(false);
     setAuditoriaExpanded(false); // Cerrar desplegable al navegar
+    setDocumentosExpanded(false); // Cerrar desplegable de documentos al navegar
   };
 
   const isActiveRoute = (path: string) => {
@@ -124,6 +135,7 @@ const Sidebar: React.FC<SidebarProps> = ({ user }) => {
           onClick={() => {
             setIsMobileOpen(false);
             setAuditoriaExpanded(false); // Cerrar desplegable al cerrar sidebar
+            setDocumentosExpanded(false); // Cerrar desplegable de documentos
           }}
         />
       )}
@@ -195,6 +207,56 @@ const Sidebar: React.FC<SidebarProps> = ({ user }) => {
                   </li>
                 );
               })}
+
+              {/* Sección de Documentos con desplegable */}
+              <li>
+                <button
+                  onClick={() => setDocumentosExpanded(!documentosExpanded)}
+                  className={`w-full flex items-center space-x-3 px-3 py-2.5 rounded-lg text-left transition-all duration-200 ${
+                    location.pathname.includes('/documents') || location.pathname.includes('/drive-config')
+                      ? 'bg-primary-50 text-primary-700 border-r-2 border-primary-600 shadow-sm'
+                      : 'text-gray-600 hover:bg-gray-50 hover:text-primary-600'
+                  }`}
+                >
+                  <FileUp className={`w-5 h-5 ${
+                    location.pathname.includes('/documents') || location.pathname.includes('/drive-config')
+                      ? 'text-primary-600' 
+                      : 'text-gray-500'
+                  }`} />
+                  <span className="font-medium text-sm flex-1">Documentos</span>
+                  {documentosExpanded ? (
+                    <ChevronDown className="w-4 h-4 text-gray-400" />
+                  ) : (
+                    <ChevronRight className="w-4 h-4 text-gray-400" />
+                  )}
+                </button>
+
+                {/* Submenu desplegable */}
+                {documentosExpanded && (
+                  <ul className="mt-1 ml-4 space-y-1">
+                    {getDocumentosOptions().map((option) => {
+                      const OptionIcon = option.icon;
+                      const isActiveOption = isActiveRoute(option.path);
+                      
+                      return (
+                        <li key={option.id}>
+                          <button
+                            onClick={() => handleNavigation(option.path)}
+                            className={`w-full flex items-center space-x-3 px-3 py-2 rounded-md text-left transition-all duration-200 ${
+                              isActiveOption
+                                ? 'bg-primary-100 text-primary-700 shadow-sm'
+                                : 'text-gray-600 hover:bg-gray-100 hover:text-primary-600'
+                            }`}
+                          >
+                            <OptionIcon className={`w-4 h-4 ${isActiveOption ? 'text-primary-600' : 'text-gray-500'}`} />
+                            <span className="text-xs font-medium">{option.label}</span>
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </li>
 
               {/* Sección de Auditoría con desplegable */}
               {canViewAuditoria() && (

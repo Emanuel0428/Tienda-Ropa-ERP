@@ -2,6 +2,26 @@ const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
 const REDIRECT_URI = window.location.origin;
 const SCOPES = 'https://www.googleapis.com/auth/drive.file';
 
+/**
+ * Extrae el folder ID de un link de Google Drive
+ * Acepta formatos:
+ * - https://drive.google.com/drive/folders/1abc123xyz
+ * - https://drive.google.com/drive/u/0/folders/1abc123xyz
+ * - Solo el ID: 1abc123xyz
+ */
+export const extractFolderIdFromLink = (link: string): string | null => {
+  if (!link) return null;
+  
+  // Si ya es solo el ID (sin https://)
+  if (!link.includes('drive.google.com') && link.length > 20) {
+    return link.trim();
+  }
+  
+  // Extraer de URL completa
+  const match = link.match(/folders\/([a-zA-Z0-9_-]+)/);
+  return match ? match[1] : null;
+};
+
 interface DriveFile {
   id: string;
   name: string;
