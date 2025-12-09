@@ -28,6 +28,10 @@
    - Nombre de la aplicación: "ERP GMCO"
    - Correo electrónico de asistencia: tu email
    - Dominios autorizados: tu dominio (ej: `tudominio.com`)
+   - **IMPORTANTE**: En la sección **"Test users"**, agregar los correos electrónicos que necesiten acceso:
+     - Clic en **"+ ADD USERS"**
+     - Agregar cada correo (ej: `federicoml2004@gmail.com`, `123@tienda.com`)
+     - Guardar
 3. Crear ID de cliente:
    - Tipo de aplicación: **Aplicación web**
    - Nombre: "ERP GMCO Web Client"
@@ -37,7 +41,24 @@
      - `https://tu-dominio.vercel.app` (producción)
 4. Copiar el ID del cliente para `VITE_GOOGLE_CLIENT_ID`
 
-### 4. Configurar variables de entorno
+### 4. Agregar usuarios de prueba (CRÍTICO)
+
+⚠️ **IMPORTANTE**: Mientras tu app no esté verificada por Google, solo los usuarios de prueba podrán acceder.
+
+1. Ir a **APIs y servicios** > **Pantalla de consentimiento de OAuth**
+2. Scroll hasta la sección **"Test users"**
+3. Clic en **"+ ADD USERS"**
+4. Agregar los correos electrónicos (uno por línea):
+   ```
+   federicoml2004@gmail.com
+   123@tienda.com
+   [otros correos necesarios]
+   ```
+5. Clic en **"SAVE"**
+
+**Nota**: Sin este paso, verás el error "Error 403: access_denied" al intentar autenticarte.
+
+### 5. Configurar variables de entorno
 
 Añadir al archivo `.env`:
 
@@ -47,7 +68,7 @@ VITE_GOOGLE_CLIENT_ID=123456789-abcdefghijklmnop.apps.googleusercontent.com
 VITE_GOOGLE_API_KEY=AIzaSyA_1B2C3d4E5F6g7H8i9J0k1L2m3N4o5P6
 ```
 
-### 5. Estructura de carpetas en Drive
+### 6. Estructura de carpetas en Drive
 
 La aplicación creará automáticamente esta estructura:
 
