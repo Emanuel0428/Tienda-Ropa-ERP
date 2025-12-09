@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
@@ -11,8 +11,11 @@ import {
   Eye, 
   Trash2,
   Search,
-  Camera
+  Camera,
+  LogIn,
+  LogOut
 } from 'lucide-react';
+import { driveService as driveService, DriveFile } from '../services/driveService';
 
 const Documents: React.FC = () => {
   const navigate = useNavigate();
@@ -20,6 +23,31 @@ const Documents: React.FC = () => {
   const [selectedCategory, setSelectedCategory] = useState(''); // Para mostrar lista de documentos
   const [selectedUploadCategory, setSelectedUploadCategory] = useState('ventas');
   const [noDatafonoSales, setNoDatafonoSales] = useState<string[]>([]); // Días marcados como "sin ventas por datáfono"
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [documents, setDocuments] = useState<DriveFile[]>([]);
+  const [uploadProgress, setUploadProgress] = useState(0);
+
+  // Inicializar Google Drive API
+  useEffect(() => {
+    const checkAuth = async () => {
+      const authHandled = await driveService.handleAuthCallback();
+      if (authHandled && window.location.pathname !== '/documents') {
+        navigate('/documents');
+      }
+      
+      setIsAuthenticated(driveService.isAuthenticated());
+    };
+    
+    checkAuth();
+  }, [navigate]);
+
+  // Cargar documentos cuando se selecciona una categoría
+  useEffect(() => {
+    if (selectedCategory && selectedCategory !== 'all' && isAuthenticated) {
+      loadDocuments(selectedCategory);
+    }
+  }, [selectedCategory, isAuthenticated]);
 
   // Categorías específicas de documentos de tienda
   const documentCategories = [
@@ -70,17 +98,40 @@ const Documents: React.FC = () => {
     }
   ];
 
-  // Array de documentos (vacío inicialmente)
-  const documents: Array<{
-    id: number;
-    name: string;
-    type: string;
-    category: string;
-    uploadDate: string;
-    size: string;
-    uploadedBy: string;
-    status: string;
-  }> = [];
+  // Función para cargar documentos de Google Drive
+  const loadDocuments = async (categoryId: string) => {
+    if (!isAuthenticated) return;
+    
+    setIsLoading(true);
+    try {
+      const category = getCategoryById(categoryId);
+      const files = await driveService.listFiles(category.drivePath);
+      setDocuments(files);
+    } catch (error) {
+      console.error('Error al cargar documentos:', error);
+      alert('Error al cargar documentos de Google Drive');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Función para autenticarse con Google
+  const handleSignIn = async () => {
+    try {
+      await driveService.signIn();
+    } catch (error: any) {
+      alert(`Error al conectar: ${error.message}`);
+      setIsLoading(false);
+    }
+  };
+
+  // Función para cerrar sesión
+  const handleSignOut = () => {
+    driveService.signOut();
+    setIsAuthenticated(false);
+    setDocuments([]);
+    alert('Sesión cerrada correctamente');
+  };
 
   // Función para obtener la categoría completa por ID
   const getCategoryById = (id: string) => {
@@ -98,9 +149,10 @@ const Documents: React.FC = () => {
   };
 
   // Función para filtrar documentos
-  const filteredDocuments = documents.filter(doc => {
+  const filteredDocuments = documents.filter(() => {
     if (selectedCategory === 'all') return true;
-    return doc.category === selectedCategory;
+    // Los archivos de Drive no tienen categoría, se asume que están en la carpeta correcta
+    return true;
   });
 
   // Función para obtener color del badge según categoría
@@ -117,12 +169,17 @@ const Documents: React.FC = () => {
   };
 
   // Función para verificar si un documento diario ya se subió hoy
-  const isDocumentUploadedToday = (categoryId: string) => {
-    const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
-    return documents.some(doc => 
-      doc.category === categoryId && 
-      doc.uploadDate === today
-    );
+  const isDocumentUploadedToday = (_categoryId: string) => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    // Aquí necesitaríamos cargar los documentos de la categoría y verificar
+    // Por ahora retorna false para mantener la lógica existente
+    return documents.some(doc => {
+      const docDate = new Date(doc.createdTime);
+      docDate.setHours(0, 0, 0, 0);
+      return docDate.getTime() === today.getTime();
+    });
   };
 
   // Función para verificar si se marcó "sin ventas por datáfono" hoy
@@ -163,23 +220,86 @@ const Documents: React.FC = () => {
     }
   };
 
-  // Función para simular subida de archivo
-  const handleUpload = (file: File | null) => {
+  // Función para subir archivo a Google Drive
+  const handleUpload = async (file: File | null) => {
     if (!file) {
       alert('Por favor selecciona un archivo');
       return;
     }
 
+    if (!isAuthenticated) {
+      alert('Por favor inicia sesión con Google Drive primero');
+      return;
+    }
+
     const category = getCategoryById(selectedUploadCategory);
     
-    // Simular proceso de subida
-    console.log(`Subiendo archivo a: ${category.drivePath}`);
-    console.log(`Categoría: ${category.name}`);
-    console.log(`Archivo: ${file.name}`);
-    
-    alert(`¡Documento subido exitosamente!\n\nCategoría: ${category.name}\nRuta de Drive: ${category.drivePath}`);
-    
-    setShowUploadModal(false);
+    try {
+      setIsLoading(true);
+      setUploadProgress(0);
+
+      // Subir archivo a Google Drive
+      await driveService.uploadFile(
+        file,
+        category.drivePath,
+        (progress) => {
+          setUploadProgress(progress.percentage);
+        }
+      );
+
+      alert(`¡Documento subido exitosamente a Google Drive!\n\nCategoría: ${category.name}\nRuta: ${category.drivePath}`);
+      
+      // Recargar documentos si estamos viendo esa categoría
+      if (selectedCategory === selectedUploadCategory) {
+        await loadDocuments(selectedUploadCategory);
+      }
+
+      setShowUploadModal(false);
+      setUploadProgress(0);
+    } catch (error) {
+      console.error('Error al subir archivo:', error);
+      alert('Error al subir el documento a Google Drive');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Función para eliminar archivo
+  const handleDelete = async (fileId: string, fileName: string) => {
+    if (!confirm(`¿Estás seguro de eliminar "${fileName}"?`)) {
+      return;
+    }
+
+    try {
+      setIsLoading(true);
+      await driveService.deleteFile(fileId);
+      alert('Documento eliminado exitosamente');
+      
+      // Recargar documentos
+      if (selectedCategory && selectedCategory !== 'all') {
+        await loadDocuments(selectedCategory);
+      }
+    } catch (error) {
+      console.error('Error al eliminar archivo:', error);
+      alert('Error al eliminar el documento');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Función para descargar archivo
+  const handleDownload = async (fileId: string, fileName: string) => {
+    try {
+      await driveService.downloadFile(fileId, fileName);
+    } catch (error) {
+      console.error('Error al descargar archivo:', error);
+      alert('Error al descargar el documento');
+    }
+  };
+
+  // Función para ver archivo (abrir en nueva pestaña)
+  const handleView = (webViewLink: string) => {
+    window.open(webViewLink, '_blank');
   };
 
   return (
@@ -188,6 +308,22 @@ const Documents: React.FC = () => {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">📂 Gestión de Documentos</h1>
           <p className="text-gray-600">Sube documentos diarios de la tienda organizados por categoría</p>
+        </div>
+        <div>
+          {!isAuthenticated ? (
+            <Button onClick={handleSignIn} className="flex items-center gap-2">
+              <LogIn className="w-4 h-4" />
+              Conectar Google Drive
+            </Button>
+          ) : (
+            <div className="flex items-center gap-4">
+              <span className="text-sm text-green-600">✓ Conectado a Google Drive</span>
+              <Button onClick={handleSignOut} variant="outline" size="sm" className="flex items-center gap-2">
+                <LogOut className="w-4 h-4" />
+                Desconectar
+              </Button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -255,19 +391,9 @@ const Documents: React.FC = () => {
               
               {/* Mostrar documentos de esta categoría */}
               <div className="mt-4">
-                {documents.filter(doc => doc.category === category.id).length > 0 ? (
-                  <div className="text-sm text-gray-600">
-                    {documents.filter(doc => doc.category === category.id).length} documento(s)
-                    <button 
-                      onClick={() => setSelectedCategory(category.id)}
-                      className="ml-2 text-blue-600 hover:underline"
-                    >
-                      Ver detalles
-                    </button>
-                  </div>
-                ) : (
-                  <div className="text-sm text-gray-400">Sin documentos</div>
-                )}
+                <div className="text-sm text-gray-400">
+                  {isAuthenticated ? 'Ver documentos en Google Drive' : 'Conecta Google Drive para ver documentos'}
+                </div>
               </div>
             </div>
           ))}
@@ -354,19 +480,9 @@ const Documents: React.FC = () => {
               
               {/* Mostrar documentos de esta categoría */}
               <div className="mt-4">
-                {documents.filter(doc => doc.category === category.id).length > 0 ? (
-                  <div className="text-sm text-gray-600">
-                    {documents.filter(doc => doc.category === category.id).length} documento(s)
-                    <button 
-                      onClick={() => setSelectedCategory(category.id)}
-                      className="ml-2 text-blue-600 hover:underline"
-                    >
-                      Ver detalles
-                    </button>
-                  </div>
-                ) : (
-                  <div className="text-sm text-gray-400">Sin documentos</div>
-                )}
+                <div className="text-sm text-gray-400">
+                  {isAuthenticated ? 'Ver documentos en Google Drive' : 'Conecta Google Drive para ver documentos'}
+                </div>
               </div>
             </div>
           ))}
@@ -408,43 +524,53 @@ const Documents: React.FC = () => {
             {filteredDocuments.length > 0 ? (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {filteredDocuments.map((doc) => {
-                  const category = getCategoryById(doc.category);
+                  const category = getCategoryById(selectedCategory);
                   return (
                     <Card key={doc.id} className="p-4">
                       <div className="flex items-start space-x-3">
                         <div className="p-2 bg-gray-50 rounded-lg">
-                          {getFileIcon(doc.type)}
+                          {getFileIcon('pdf')}
                         </div>
                         <div className="flex-1 min-w-0">
                           <h3 className="text-sm font-medium text-gray-900 truncate">
                             {doc.name}
                           </h3>
                           <p className="text-xs text-gray-500 mt-1">
-                            {doc.size} • {new Date(doc.uploadDate).toLocaleDateString()}
+                            {driveService.formatFileSize(parseInt(doc.size || '0'))} • {new Date(doc.createdTime).toLocaleDateString()}
                           </p>
                           <div className="flex items-center gap-2 mt-2">
-                            <Badge variant={getCategoryBadgeVariant(doc.category)} size="sm">
+                            <Badge variant={getCategoryBadgeVariant(selectedCategory)} size="sm">
                               {category.name}
                             </Badge>
                           </div>
-                          <p className="text-xs text-gray-500 mt-1">
-                            Por {doc.uploadedBy}
-                          </p>
                         </div>
                       </div>
                       
                       <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-200">
                         <div className="flex space-x-2">
-                          <Button variant="outline" size="sm">
+                          <Button 
+                            variant="outline" 
+                            size="sm"
+                            onClick={() => handleView(doc.webViewLink)}
+                          >
                             <Eye className="w-3 h-3 mr-1" />
                             Ver
                           </Button>
-                          <Button variant="outline" size="sm">
+                          <Button 
+                            variant="outline" 
+                            size="sm"
+                            onClick={() => handleDownload(doc.id, doc.name)}
+                          >
                             <Download className="w-3 h-3 mr-1" />
                             Descargar
                           </Button>
                         </div>
-                        <Button variant="ghost" size="sm" className="text-red-600 hover:text-red-700">
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          className="text-red-600 hover:text-red-700"
+                          onClick={() => handleDelete(doc.id, doc.name)}
+                        >
                           <Trash2 className="w-3 h-3" />
                         </Button>
                       </div>
@@ -461,6 +587,11 @@ const Documents: React.FC = () => {
                     : `No hay documentos en la categoría "${getCategoryById(selectedCategory).name}"`
                   }
                 </p>
+                {!isAuthenticated && (
+                  <p className="text-sm text-gray-400 mt-2">
+                    Conecta con Google Drive para ver tus documentos
+                  </p>
+                )}
               </div>
             )}
           </div>
@@ -474,6 +605,14 @@ const Documents: React.FC = () => {
         title="Subir Documento PDF"
       >
         <div className="space-y-4">
+          {!isAuthenticated && (
+            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+              <p className="text-sm text-yellow-800">
+                ⚠️ Primero debes conectarte a Google Drive
+              </p>
+            </div>
+          )}
+
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Categoría del Documento
@@ -508,11 +647,28 @@ const Documents: React.FC = () => {
                 }
               }}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              disabled={!isAuthenticated || isLoading}
             />
             <p className="text-xs text-gray-500 mt-1">
               Solo archivos PDF. Máximo 10MB.
             </p>
           </div>
+
+          {/* Barra de progreso */}
+          {isLoading && uploadProgress > 0 && (
+            <div className="space-y-2">
+              <div className="flex justify-between text-sm text-gray-600">
+                <span>Subiendo...</span>
+                <span>{uploadProgress}%</span>
+              </div>
+              <div className="w-full bg-gray-200 rounded-full h-2">
+                <div 
+                  className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                  style={{ width: `${uploadProgress}%` }}
+                />
+              </div>
+            </div>
+          )}
         </div>
       </Modal>
     </div>
