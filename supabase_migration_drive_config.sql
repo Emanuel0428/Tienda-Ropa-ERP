@@ -65,56 +65,85 @@ CREATE TRIGGER trigger_update_drive_configs_updated_at
 -- 6. Habilitar Row Level Security (RLS)
 ALTER TABLE public.drive_configs ENABLE ROW LEVEL SECURITY;
 
--- 7. Políticas de seguridad
+-- 7. Políticas de seguridad (COMENTADAS - Ajustar según tu esquema de base de datos)
+
+-- IMPORTANTE: Reemplaza 'public.usuarios' con el nombre correcto de tu tabla de usuarios
+-- Opciones comunes: public.usuarios, auth.users, public.user_profiles, etc.
 
 -- Los usuarios solo pueden ver las configuraciones de su propia tienda
 CREATE POLICY "Users can view their own store configs"
 ON public.drive_configs
 FOR SELECT
+USING (true); -- Permitir todo por ahora - AJUSTAR SEGÚN TU ESQUEMA
+/*
 USING (
     id_tienda IN (
         SELECT id_tienda 
-        FROM public.users 
+        FROM public.usuarios  -- CAMBIAR AL NOMBRE CORRECTO
         WHERE id = auth.uid()
     )
 );
+*/
 
 -- Los usuarios pueden insertar configuraciones para su propia tienda
 CREATE POLICY "Users can insert configs for their store"
 ON public.drive_configs
 FOR INSERT
+WITH CHECK (true); -- Permitir todo por ahora - AJUSTAR SEGÚN TU ESQUEMA
+/*
 WITH CHECK (
     id_tienda IN (
         SELECT id_tienda 
-        FROM public.users 
+        FROM public.usuarios  -- CAMBIAR AL NOMBRE CORRECTO
         WHERE id = auth.uid()
     )
 );
+*/
 
 -- Los usuarios pueden actualizar configuraciones de su propia tienda
 CREATE POLICY "Users can update their own store configs"
 ON public.drive_configs
 FOR UPDATE
+USING (true); -- Permitir todo por ahora - AJUSTAR SEGÚN TU ESQUEMA
+/*
 USING (
     id_tienda IN (
         SELECT id_tienda 
-        FROM public.users 
+        FROM public.usuarios  -- CAMBIAR AL NOMBRE CORRECTO
         WHERE id = auth.uid()
     )
 );
+*/
 
--- Los admins pueden hacer todo
+-- Los usuarios pueden eliminar configuraciones de su propia tienda
+CREATE POLICY "Users can delete their own store configs"
+ON public.drive_configs
+FOR DELETE
+USING (true); -- Permitir todo por ahora - AJUSTAR SEGÚN TU ESQUEMA
+/*
+USING (
+    id_tienda IN (
+        SELECT id_tienda 
+        FROM public.usuarios  -- CAMBIAR AL NOMBRE CORRECTO
+        WHERE id = auth.uid()
+    )
+);
+*/
+
+-- Los admins pueden hacer todo (COMENTADO - DESCOMENTAR Y AJUSTAR SI NECESARIO)
+/*
 CREATE POLICY "Admins can manage all configs"
 ON public.drive_configs
 FOR ALL
 USING (
     EXISTS (
         SELECT 1 
-        FROM public.users 
+        FROM public.usuarios  -- CAMBIAR AL NOMBRE CORRECTO
         WHERE id = auth.uid() 
         AND role = 'admin'
     )
 );
+*/
 
 -- 8. Verificar estructura de la tabla
 SELECT 

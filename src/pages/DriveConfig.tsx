@@ -33,10 +33,7 @@ const DriveConfig: React.FC = () => {
     { id: 'cierre_voucher', nombre: 'Cierre de Voucher', descripcion: 'Vouchers de tarjetas y pagos electrónicos', icono: '💳' },
     { id: 'consignaciones', nombre: 'Consignaciones', descripcion: 'Documentos de consignaciones bancarias', icono: '🏦' },
     { id: 'facturas_gastos', nombre: 'Facturas y Gastos', descripcion: 'Facturas de compras y gastos operativos', icono: '🧾' },
-    { id: 'inventario', nombre: 'Inventario', descripcion: 'Documentos de control de inventario', icono: '📦' },
-    { id: 'nomina', nombre: 'Nómina', descripcion: 'Documentos de nómina y pagos a empleados', icono: '👥' },
-    { id: 'otros', nombre: 'Otros Documentos', descripcion: 'Otros documentos administrativos', icono: '📄' }
-  ];
+   ];
 
   useEffect(() => {
     loadTiendaConfig();
@@ -61,18 +58,40 @@ const DriveConfig: React.FC = () => {
         return;
       }
 
-      // Obtener la tienda del usuario
+      // Obtener el id_tienda del usuario (primera consulta)
       const { data: userData, error: userError } = await supabase
-        .from('users')
-        .select('id_tienda, tienda:tiendas(id_tienda, nombre)')
+        .from('usuarios')
+        .select('id_tienda')
         .eq('id', user.id)
         .single();
 
-      if (userError) throw userError;
+      if (userError) {
+        console.error('Error obteniendo usuario:', userError);
+        throw userError;
+      }
 
-      if (userData && userData.tienda) {
-        const tienda = Array.isArray(userData.tienda) ? userData.tienda[0] : userData.tienda;
-        setTiendaConfig(tienda);
+      if (!userData || !userData.id_tienda) {
+        setErrorMessage('Usuario no tiene tienda asignada');
+        return;
+      }
+
+      // Obtener los datos de la tienda (segunda consulta)
+      const { data: tiendaData, error: tiendaError } = await supabase
+        .from('tiendas')
+        .select('id_tienda, nombre')
+        .eq('id_tienda', userData.id_tienda)
+        .single();
+
+      if (tiendaError) {
+        console.error('Error obteniendo tienda:', tiendaError);
+        throw tiendaError;
+      }
+
+      if (tiendaData) {
+        setTiendaConfig({
+          id_tienda: tiendaData.id_tienda,
+          nombre: tiendaData.nombre
+        });
       }
     } catch (error: any) {
       console.error('Error cargando configuración:', error);

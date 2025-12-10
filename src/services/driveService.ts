@@ -183,14 +183,23 @@ class DriveService {
    */
   async uploadFile(
     file: File,
-    categoryPath: string,
+    folderIdOrPath: string,
     onProgress?: (progress: UploadProgress) => void
   ): Promise<DriveFile> {
     if (!this.accessToken) {
       throw new Error('No autenticado');
     }
     
-    const folderId = await this.getCategoryFolderId(categoryPath);
+    // Si es un ID de carpeta (sin '/'), usarlo directamente
+    // Si es un path (con '/'), buscar o crear la estructura de carpetas
+    let folderId: string;
+    if (folderIdOrPath.includes('/')) {
+      console.log('📁 Usando path para crear/buscar carpeta:', folderIdOrPath);
+      folderId = await this.getCategoryFolderId(folderIdOrPath);
+    } else {
+      console.log('📁 Usando Folder ID directamente:', folderIdOrPath);
+      folderId = folderIdOrPath;
+    }
 
     const metadata = {
       name: file.name,
@@ -200,6 +209,8 @@ class DriveService {
     const formData = new FormData();
     formData.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
     formData.append('file', file);
+
+    console.log('⬆️ Subiendo archivo con metadata:', metadata);
 
     const response = await fetch(
       'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,mimeType,size,createdTime,modifiedTime,webViewLink,webContentLink',
@@ -222,18 +233,31 @@ class DriveService {
       onProgress({ loaded: file.size, total: file.size, percentage: 100 });
     }
 
+    console.log('✅ Archivo subido exitosamente:', result);
+
     return result;
   }
 
   /**
    * Lista archivos de una categoría
    */
-  async listFiles(categoryPath: string): Promise<DriveFile[]> {
-    const folderId = await this.getCategoryFolderId(categoryPath);
+  async listFiles(folderIdOrPath: string): Promise<DriveFile[]> {
+    // Si es un ID de carpeta (sin '/'), usarlo directamente
+    // Si es un path (con '/'), buscar o crear la estructura de carpetas
+    let folderId: string;
+    if (folderIdOrPath.includes('/')) {
+      console.log('📁 Listando archivos usando path:', folderIdOrPath);
+      folderId = await this.getCategoryFolderId(folderIdOrPath);
+    } else {
+      console.log('📁 Listando archivos usando Folder ID:', folderIdOrPath);
+      folderId = folderIdOrPath;
+    }
 
     const response = await this.driveRequest(
       `/files?q='${folderId}' in parents and trashed=false&fields=files(id,name,mimeType,size,createdTime,modifiedTime,webViewLink,webContentLink)&orderBy=modifiedTime desc`
     );
+
+    console.log('📄 Archivos encontrados:', response.files?.length || 0);
 
     return response.files || [];
   }

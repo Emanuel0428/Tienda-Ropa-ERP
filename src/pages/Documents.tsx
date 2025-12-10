@@ -13,9 +13,19 @@ import {
   Search,
   Camera,
   LogIn,
-  LogOut
+  LogOut,
+  Settings
 } from 'lucide-react';
-import { driveService as driveService, DriveFile } from '../services/driveService';
+import { driveService as driveService, DriveFile, extractFolderIdFromLink } from '../services/driveService';
+import { supabase } from '../supabaseClient';
+
+interface DriveConfig {
+  id: number;
+  id_tienda: number;
+  mes: string;
+  tipo_documento: string;
+  drive_link: string;
+}
 
 const Documents: React.FC = () => {
   const navigate = useNavigate();
@@ -27,6 +37,8 @@ const Documents: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [documents, setDocuments] = useState<DriveFile[]>([]);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [driveConfigs, setDriveConfigs] = useState<DriveConfig[]>([]);
+  const [currentMonth, setCurrentMonth] = useState<string>('');
 
   // Inicializar Google Drive API
   useEffect(() => {
@@ -41,6 +53,131 @@ const Documents: React.FC = () => {
     
     checkAuth();
   }, [navigate]);
+
+  // Cargar información del usuario y configuraciones
+  useEffect(() => {
+    const loadUserAndConfigs = async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          // Obtener el id_tienda del usuario
+          const { data: userData, error: userError } = await supabase
+            .from('usuarios')
+            .select('id_tienda')
+            .eq('id', user.id)
+            .single();
+          
+          if (userError) {
+            console.error('Error obteniendo usuario:', userError);
+            return;
+          }
+          
+          if (userData) {
+            // Establecer mes actual
+            const now = new Date();
+            const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+            setCurrentMonth(month);
+            
+            // Cargar configuraciones de Drive para este mes
+            await loadDriveConfigs(userData.id_tienda, month);
+          }
+        }
+      } catch (error) {
+        console.error('Error al cargar datos del usuario:', error);
+      }
+    };
+    
+    loadUserAndConfigs();
+  }, []);
+
+  // Recargar configs cuando la página se vuelve visible (ej: después de configurar)
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (!document.hidden && currentMonth) {
+        // Recargar configs cuando la página vuelve a ser visible
+        const reloadConfigs = async () => {
+          try {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (user) {
+              const { data: userData } = await supabase
+                .from('usuarios')
+                .select('id_tienda')
+                .eq('id', user.id)
+                .single();
+              
+              if (userData) {
+                console.log('🔄 Recargando configs después de volver a la página...');
+                await loadDriveConfigs(userData.id_tienda, currentMonth);
+              }
+            }
+          } catch (error) {
+            console.error('Error recargando configs:', error);
+          }
+        };
+        
+        reloadConfigs();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [currentMonth]);
+
+  // Función para cargar configuraciones de Drive
+  const loadDriveConfigs = async (storeId: number, month: string) => {
+    try {
+      console.log('🔍 Cargando configs de Drive:', { storeId, month });
+      
+      const { data, error } = await supabase
+        .from('drive_configs')
+        .select('*')
+        .eq('id_tienda', storeId)
+        .eq('mes', month);
+      
+      if (error) throw error;
+      
+      if (data) {
+        console.log('✅ Configs cargados:', data);
+        setDriveConfigs(data);
+      } else {
+        console.log('⚠️ No hay configs para este mes');
+        setDriveConfigs([]);
+      }
+    } catch (error) {
+      console.error('❌ Error al cargar configuraciones de Drive:', error);
+    }
+  };
+
+  // Función para obtener el link de Drive configurado para un tipo de documento
+  const getDriveLinkForCategory = (categoryId: string): string | null => {
+    // Mapeo de IDs de categoría a tipos de documento
+    const categoryToType: { [key: string]: string } = {
+      'ventas': 'ventas',
+      'cierre-caja': 'cierre_caja',
+      'cierre-voucher': 'cierre_voucher',
+      'consignaciones': 'consignaciones',
+      'facturas-gastos': 'facturas_gastos',
+      'inventario': 'inventario',
+      'nomina': 'nomina',
+      'otros': 'otros'
+    };
+    
+    const tipoDocumento = categoryToType[categoryId];
+    if (!tipoDocumento) {
+      console.warn('⚠️ Tipo de documento no encontrado para:', categoryId);
+      return null;
+    }
+    
+    const config = driveConfigs.find(c => c.tipo_documento === tipoDocumento);
+    const link = config?.drive_link || null;
+    
+    console.log('📂 Link para', categoryId, '→', tipoDocumento, ':', link);
+    
+    return link;
+  };
 
   // Cargar documentos cuando se selecciona una categoría
   useEffect(() => {
@@ -104,8 +241,26 @@ const Documents: React.FC = () => {
     
     setIsLoading(true);
     try {
-      const category = getCategoryById(categoryId);
-      const files = await driveService.listFiles(category.drivePath);
+      const driveLink = getDriveLinkForCategory(categoryId);
+      
+      if (!driveLink) {
+        alert(`No hay configuración de Drive para este tipo de documento en el mes ${currentMonth}. Por favor, configura el link en Configuración Drive.`);
+        setDocuments([]);
+        setIsLoading(false);
+        return;
+      }
+      
+      // Extraer el ID de la carpeta del link
+      const folderId = extractFolderIdFromLink(driveLink);
+      
+      if (!folderId) {
+        alert('El link de Drive configurado no es válido. Por favor, verifica la configuración.');
+        setDocuments([]);
+        setIsLoading(false);
+        return;
+      }
+      
+      const files = await driveService.listFiles(folderId);
       setDocuments(files);
     } catch (error) {
       console.error('Error al cargar documentos:', error);
@@ -233,21 +388,46 @@ const Documents: React.FC = () => {
     }
 
     const category = getCategoryById(selectedUploadCategory);
+    const driveLink = getDriveLinkForCategory(selectedUploadCategory);
+    
+    console.log('📤 Intentando subir archivo:', {
+      categoria: category.name,
+      categoryId: selectedUploadCategory,
+      mes: currentMonth,
+      driveLink: driveLink
+    });
+    
+    if (!driveLink) {
+      alert(`No hay configuración de Drive para ${category.name} en el mes ${currentMonth}. Por favor, configura el link en Configuración Drive.`);
+      return;
+    }
+    
+    const folderId = extractFolderIdFromLink(driveLink);
+    
+    console.log('📁 Folder ID extraído:', folderId);
+    
+    if (!folderId) {
+      alert('El link de Drive configurado no es válido. Por favor, verifica la configuración.');
+      return;
+    }
     
     try {
       setIsLoading(true);
       setUploadProgress(0);
 
-      // Subir archivo a Google Drive
+      console.log('⬆️ Subiendo archivo a carpeta:', folderId);
+
+      // Subir archivo a Google Drive usando el folder ID
       await driveService.uploadFile(
         file,
-        category.drivePath,
+        folderId,
         (progress) => {
           setUploadProgress(progress.percentage);
         }
       );
 
-      alert(`¡Documento subido exitosamente a Google Drive!\n\nCategoría: ${category.name}\nRuta: ${category.drivePath}`);
+      console.log('✅ Archivo subido exitosamente');
+      alert(`¡Documento subido exitosamente a Google Drive!\n\nCategoría: ${category.name}\nMes: ${currentMonth}\nCarpeta ID: ${folderId}`);
       
       // Recargar documentos si estamos viendo esa categoría
       if (selectedCategory === selectedUploadCategory) {
@@ -257,7 +437,7 @@ const Documents: React.FC = () => {
       setShowUploadModal(false);
       setUploadProgress(0);
     } catch (error) {
-      console.error('Error al subir archivo:', error);
+      console.error('❌ Error al subir archivo:', error);
       alert('Error al subir el documento a Google Drive');
     } finally {
       setIsLoading(false);
@@ -308,8 +488,21 @@ const Documents: React.FC = () => {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">📂 Gestión de Documentos</h1>
           <p className="text-gray-600">Sube documentos diarios de la tienda organizados por categoría</p>
+          {currentMonth && (
+            <p className="text-sm text-gray-500 mt-1">
+              📅 Mes actual: <span className="font-medium">{currentMonth}</span>
+            </p>
+          )}
         </div>
-        <div>
+        <div className="flex items-center gap-3">
+          <Button 
+            onClick={() => navigate('/drive-config')} 
+            variant="outline"
+            className="flex items-center gap-2"
+          >
+            <Settings className="w-4 h-4" />
+            Configurar Drive
+          </Button>
           {!isAuthenticated ? (
             <Button onClick={handleSignIn} className="flex items-center gap-2">
               <LogIn className="w-4 h-4" />
@@ -349,7 +542,11 @@ const Documents: React.FC = () => {
                     <Badge variant={getCategoryBadgeVariant(category.id)} size="sm">
                       {category.frequency}
                     </Badge>
-                    <span className="text-xs text-gray-500">{category.drivePath}</span>
+                    {getDriveLinkForCategory(category.id) ? (
+                      <span className="text-xs text-green-600">✓ Configurado</span>
+                    ) : (
+                      <span className="text-xs text-orange-600">⚠ Sin configurar</span>
+                    )}
                   </div>
                   {isDailyCategory(category.id) && (
                     <div className="mt-2 text-xs font-medium">
@@ -420,7 +617,11 @@ const Documents: React.FC = () => {
                     <Badge variant={getCategoryBadgeVariant(category.id)} size="sm">
                       {category.frequency}
                     </Badge>
-                    <span className="text-xs text-gray-500">{category.drivePath}</span>
+                    {getDriveLinkForCategory(category.id) ? (
+                      <span className="text-xs text-green-600">✓ Configurado</span>
+                    ) : (
+                      <span className="text-xs text-orange-600">⚠ Sin configurar</span>
+                    )}
                   </div>
                   <div className="mt-2 text-xs font-medium">
                     {category.id === 'cierre-voucher' ? (

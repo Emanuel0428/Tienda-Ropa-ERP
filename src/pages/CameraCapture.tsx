@@ -14,8 +14,9 @@ import {
   Loader2
 } from 'lucide-react';
 import jscanify from 'jscanify/src/jscanify';
-import { initializeGoogleDrive, uploadPDFToDrive } from '../services/googleDriveService';
 import { convertImageToPDF, generateFileName } from '../utils/pdfConverter';
+import { supabase } from '../supabaseClient';
+import { driveService, extractFolderIdFromLink } from '../services/driveService';
 
 interface Corner {
   x: number;
@@ -26,10 +27,12 @@ const CameraCapture: React.FC = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   
+  const categoryId = searchParams.get('category') || '';
   const categoryName = searchParams.get('categoryName') || 'Documentos';
   
-  // ID de carpeta de Drive (por ahora usamos la de prueba)
-  const DRIVE_FOLDER_ID = '10WJQndXOOPA8ZhBXxtEr5bVE9JNAk0Zd';
+  const [driveFolderId, setDriveFolderId] = useState<string | null>(null);
+  const [currentMonth, setCurrentMonth] = useState<string>('');
+  const [configLoaded, setConfigLoaded] = useState(false);
   
   const [isScanning, setIsScanning] = useState(false);
   const [scannedImage, setScannedImage] = useState<string | null>(null);
@@ -52,12 +55,87 @@ const CameraCapture: React.FC = () => {
   const scannerRef = useRef<any>(null);
   const animationFrameRef = useRef<number | null>(null);
 
+  // Cargar configuración de Drive al iniciar
   useEffect(() => {
-    // Inicializar Google Drive API
-    initializeGoogleDrive().catch(err => {
-      console.error('Error inicializando Google Drive:', err);
-    });
-  }, []);
+    const loadDriveConfig = async () => {
+      try {
+        console.log('🔍 Cargando config de Drive para categoría:', categoryId);
+        
+        // Obtener usuario actual
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) {
+          setError('Usuario no autenticado');
+          return;
+        }
+
+        // Obtener id_tienda del usuario
+        const { data: userData } = await supabase
+          .from('usuarios')
+          .select('id_tienda')
+          .eq('id', user.id)
+          .single();
+
+        if (!userData) {
+          setError('No se pudo obtener la tienda del usuario');
+          return;
+        }
+
+        // Obtener mes actual
+        const now = new Date();
+        const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+        setCurrentMonth(month);
+
+        // Mapeo de IDs de categoría a tipos de documento
+        const categoryToType: { [key: string]: string } = {
+          'ventas': 'ventas',
+          'cierre-caja': 'cierre_caja',
+          'cierre-voucher': 'cierre_voucher',
+          'consignaciones': 'consignaciones',
+          'facturas-gastos': 'facturas_gastos',
+          'inventario': 'inventario',
+          'nomina': 'nomina',
+          'otros': 'otros'
+        };
+
+        const tipoDocumento = categoryToType[categoryId];
+        if (!tipoDocumento) {
+          setError(`Tipo de documento no válido: ${categoryId}`);
+          return;
+        }
+
+        // Obtener configuración de Drive
+        const { data: configData, error: configError } = await supabase
+          .from('drive_configs')
+          .select('drive_link')
+          .eq('id_tienda', userData.id_tienda)
+          .eq('mes', month)
+          .eq('tipo_documento', tipoDocumento)
+          .single();
+
+        if (configError || !configData) {
+          setError(`No hay configuración de Drive para ${categoryName} en ${month}. Por favor, configura el link primero.`);
+          return;
+        }
+
+        // Extraer folder ID del link
+        const folderId = extractFolderIdFromLink(configData.drive_link);
+        if (!folderId) {
+          setError('El link de Drive configurado no es válido');
+          return;
+        }
+
+        console.log('✅ Config cargada. Folder ID:', folderId);
+        setDriveFolderId(folderId);
+        setConfigLoaded(true);
+
+      } catch (error) {
+        console.error('❌ Error cargando configuración:', error);
+        setError('Error al cargar la configuración de Drive');
+      }
+    };
+
+    loadDriveConfig();
+  }, [categoryId, categoryName]);
 
   useEffect(() => {
     const checkCv = setInterval(() => {
@@ -344,9 +422,24 @@ const CameraCapture: React.FC = () => {
       return;
     }
 
+    if (!driveFolderId) {
+      alert(`❌ No hay configuración de Drive para ${categoryName} en el mes ${currentMonth}. Por favor, configura el link primero.`);
+      navigate('/drive-config');
+      return;
+    }
+
     try {
       setIsUploading(true);
       setUploadProgress(0);
+
+      // Verificar autenticación
+      if (!driveService.isAuthenticated()) {
+        alert('⚠️ Debes conectarte a Google Drive primero. Ve a Gestión de Documentos y conéctate.');
+        navigate('/documents');
+        return;
+      }
+
+      console.log('📤 Subiendo documento escaneado a carpeta:', driveFolderId);
 
       // Generar nombre de archivo
       const fileName = generateFileName(categoryName);
@@ -355,24 +448,28 @@ const CameraCapture: React.FC = () => {
       setUploadProgress(20);
       const pdfBlob = await convertImageToPDF(scannedImage, fileName);
 
-      // Subir a Google Drive (el servicio manejará la autenticación)
+      // Convertir Blob a File
+      const pdfFile = new File([pdfBlob], fileName, { type: 'application/pdf' });
+
+      // Subir a Google Drive usando driveService
       setUploadProgress(40);
       
-      await uploadPDFToDrive(
-        pdfBlob,
-        fileName,
-        DRIVE_FOLDER_ID,
+      await driveService.uploadFile(
+        pdfFile,
+        driveFolderId,
         (progress) => {
-          // Mapear progreso de 40% a 90%
-          const mappedProgress = 40 + (progress * 0.5);
+          // Mapear progreso de 40% a 100%
+          const mappedProgress = 40 + (progress.percentage * 0.6);
           setUploadProgress(mappedProgress);
         }
       );
 
       setUploadProgress(100);
 
+      console.log('✅ Documento subido exitosamente');
+
       // Mostrar éxito
-      alert(`✅ Documento "${fileName}" subido exitosamente a Google Drive!`);
+      alert(`✅ Documento "${fileName}" subido exitosamente a Google Drive!\n\nCategoría: ${categoryName}\nMes: ${currentMonth}\nCarpeta ID: ${driveFolderId}`);
       
       // Navegar de vuelta
       navigate('/documents');
@@ -380,16 +477,10 @@ const CameraCapture: React.FC = () => {
       console.error('❌ Error subiendo documento:', error);
       
       // Mensajes más claros para el usuario
-      let errorMessage = 'Error desconocido';
+      let errorMessage = 'Error al subir documento';
       
       if (error.message) {
         errorMessage = error.message;
-      } else if (error.error === 'access_denied') {
-        errorMessage = 'Acceso denegado por Google.\n\nPor favor verifica:\n1. Tu correo debe estar en la lista de usuarios de prueba\n2. Ve a Google Cloud Console\n3. APIs & Services → OAuth consent screen → Test users';
-      } else if (error.error === 'popup_closed_by_user') {
-        errorMessage = 'Popup cerrado. Por favor intenta de nuevo y completa la autenticación.';
-      } else if (error.error === 'server_error') {
-        errorMessage = 'Error del servidor de Google.\n\nAsegúrate de que tu correo esté autorizado en Google Cloud Console (Test users).';
       }
       
       alert(`❌ Error al subir documento:\n\n${errorMessage}`);
@@ -824,6 +915,12 @@ const CameraCapture: React.FC = () => {
             {!cvLoaded && (
               <p className="text-xs text-gray-300 mt-1">Cargando escáner...</p>
             )}
+            {!configLoaded && !error && (
+              <p className="text-xs text-yellow-300 mt-1">Cargando configuración...</p>
+            )}
+            {configLoaded && currentMonth && (
+              <p className="text-xs text-gray-300 mt-1">📅 {currentMonth}</p>
+            )}
           </div>
           <div className="w-10"></div>
         </div>
@@ -835,14 +932,23 @@ const CameraCapture: React.FC = () => {
           <div className="h-full flex items-center justify-center p-6">
             <div className="text-center max-w-sm">
               <AlertCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
-              <h3 className="text-white text-lg font-semibold mb-2">Error de Cámara</h3>
+              <h3 className="text-white text-lg font-semibold mb-2">Error</h3>
               <p className="text-gray-400 mb-6">{error}</p>
-              <Button 
-                onClick={startCamera} 
-                className="bg-blue-600 hover:bg-blue-700"
-              >
-                Reintentar
-              </Button>
+              <div className="flex gap-3 justify-center">
+                <Button 
+                  onClick={() => navigate('/drive-config')} 
+                  className="bg-blue-600 hover:bg-blue-700"
+                >
+                  Configurar Drive
+                </Button>
+                <Button 
+                  onClick={() => navigate('/documents')} 
+                  variant="outline"
+                  className="border-white text-white hover:bg-white/10"
+                >
+                  Volver
+                </Button>
+              </div>
             </div>
           </div>
         ) : scannedImage ? (
