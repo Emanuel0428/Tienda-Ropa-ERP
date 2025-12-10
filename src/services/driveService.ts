@@ -97,6 +97,20 @@ class DriveService {
   }
 
   /**
+   * Asegura que el token esté cargado
+   */
+  private ensureToken(): void {
+    if (!this.accessToken) {
+      const storedToken = sessionStorage.getItem('google_drive_token');
+      if (storedToken) {
+        this.accessToken = storedToken;
+      } else {
+        throw new Error('No autenticado. Por favor inicia sesión con Google Drive.');
+      }
+    }
+  }
+
+  /**
    * Cierra sesión
    */
   signOut(): void {
@@ -186,9 +200,8 @@ class DriveService {
     folderIdOrPath: string,
     onProgress?: (progress: UploadProgress) => void
   ): Promise<DriveFile> {
-    if (!this.accessToken) {
-      throw new Error('No autenticado');
-    }
+    // Asegurar que el token esté disponible
+    this.ensureToken();
     
     // Si es un ID de carpeta (sin '/'), usarlo directamente
     // Si es un path (con '/'), buscar o crear la estructura de carpetas
@@ -211,6 +224,7 @@ class DriveService {
     formData.append('file', file);
 
     console.log('⬆️ Subiendo archivo con metadata:', metadata);
+    console.log('🔑 Token disponible:', this.accessToken ? 'Sí' : 'No');
 
     const response = await fetch(
       'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,mimeType,size,createdTime,modifiedTime,webViewLink,webContentLink',
@@ -223,8 +237,17 @@ class DriveService {
       }
     );
 
+    if (response.status === 401) {
+      // Token expirado o inválido
+      console.error('❌ Token expirado o inválido');
+      this.signOut();
+      throw new Error('Tu sesión de Google Drive ha expirado. Por favor, vuelve a conectarte desde Gestión de Documentos.');
+    }
+
     if (!response.ok) {
-      throw new Error(`Error al subir archivo: ${response.status}`);
+      const errorText = await response.text();
+      console.error('❌ Error en respuesta:', response.status, errorText);
+      throw new Error(`Error al subir archivo: ${response.status} - ${errorText}`);
     }
 
     const result = await response.json();

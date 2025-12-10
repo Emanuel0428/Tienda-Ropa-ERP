@@ -39,6 +39,9 @@ const Documents: React.FC = () => {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [driveConfigs, setDriveConfigs] = useState<DriveConfig[]>([]);
   const [currentMonth, setCurrentMonth] = useState<string>('');
+  const [uploadDate, setUploadDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [uploadValue, setUploadValue] = useState<string>('');
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
 
   // Inicializar Google Drive API
   useEffect(() => {
@@ -376,9 +379,14 @@ const Documents: React.FC = () => {
   };
 
   // Función para subir archivo a Google Drive
-  const handleUpload = async (file: File | null) => {
-    if (!file) {
+  const handleUpload = async () => {
+    if (!selectedFile) {
       alert('Por favor selecciona un archivo');
+      return;
+    }
+
+    if (!uploadValue.trim()) {
+      alert('Por favor ingresa el valor del documento');
       return;
     }
 
@@ -417,9 +425,20 @@ const Documents: React.FC = () => {
 
       console.log('⬆️ Subiendo archivo a carpeta:', folderId);
 
+      // Generar nombre de archivo: YYYYMMDD-TipoDocumento-$valor.pdf
+      const dateFormatted = uploadDate.replace(/-/g, ''); // YYYYMMDD
+      const categoryLabel = category.name.replace(/\s+/g, '-'); // Reemplazar espacios con guiones
+      const formattedPrice = parseInt(uploadValue).toLocaleString('es-CO'); // Formatear con comas
+      const newFileName = `${dateFormatted}-${categoryLabel}-$${formattedPrice}.pdf`;
+      
+      console.log('📝 Nombre de archivo:', newFileName);
+
+      // Crear nuevo File con el nombre personalizado
+      const renamedFile = new File([selectedFile], newFileName, { type: selectedFile.type });
+
       // Subir archivo a Google Drive usando el folder ID
       await driveService.uploadFile(
-        file,
+        renamedFile,
         folderId,
         (progress) => {
           setUploadProgress(progress.percentage);
@@ -429,13 +448,19 @@ const Documents: React.FC = () => {
       console.log('✅ Archivo subido exitosamente');
       alert(`¡Documento subido exitosamente a Google Drive!\n\nCategoría: ${category.name}\nMes: ${currentMonth}\nCarpeta ID: ${folderId}`);
       
-      // Recargar documentos si estamos viendo esa categoría
-      if (selectedCategory === selectedUploadCategory) {
-        await loadDocuments(selectedUploadCategory);
+      // Recargar documentos de la categoría que acabamos de subir
+      await loadDocuments(selectedUploadCategory);
+      
+      // Si estamos viendo otra categoría, mantenerla seleccionada pero los documentos se habrán actualizado
+      if (selectedCategory !== selectedUploadCategory) {
+        setSelectedCategory(selectedUploadCategory);
       }
 
       setShowUploadModal(false);
       setUploadProgress(0);
+      setSelectedFile(null);
+      setUploadValue('');
+      setUploadDate(new Date().toISOString().split('T')[0]);
     } catch (error) {
       console.error('❌ Error al subir archivo:', error);
       alert('Error al subir el documento a Google Drive');
@@ -844,7 +869,7 @@ const Documents: React.FC = () => {
               onChange={(e) => {
                 const file = e.target.files?.[0];
                 if (file) {
-                  handleUpload(file);
+                  setSelectedFile(file);
                 }
               }}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
@@ -853,6 +878,79 @@ const Documents: React.FC = () => {
             <p className="text-xs text-gray-500 mt-1">
               Solo archivos PDF. Máximo 10MB.
             </p>
+            {selectedFile && (
+              <p className="text-sm text-green-600 mt-1">
+                ✓ {selectedFile.name}
+              </p>
+            )}
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Fecha del Documento
+            </label>
+            <input
+              type="date"
+              value={uploadDate}
+              onChange={(e) => setUploadDate(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              disabled={!isAuthenticated || isLoading}
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Valor del Documento
+            </label>
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500">$</span>
+              <input
+                type="text"
+                value={uploadValue}
+                onChange={(e) => {
+                  // Solo permitir números
+                  const value = e.target.value.replace(/[^0-9]/g, '');
+                  setUploadValue(value);
+                }}
+                placeholder="5000"
+                className="w-full pl-8 pr-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                disabled={!isAuthenticated || isLoading}
+              />
+            </div>
+            <p className="text-xs text-gray-500 mt-1">
+              Ejemplo: Para $5,000 ingresa "5000"
+            </p>
+          </div>
+
+          {selectedFile && uploadValue && (
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+              <p className="text-xs font-medium text-blue-900 mb-1">Vista previa del nombre:</p>
+              <p className="text-sm text-blue-700 font-mono break-all">
+                {uploadDate.replace(/-/g, '')}-{getCategoryById(selectedUploadCategory).name.replace(/\s+/g, '-')}-${parseInt(uploadValue).toLocaleString('es-CO')}.pdf
+              </p>
+            </div>
+          )}
+
+          <div className="flex gap-2">
+            <Button
+              onClick={handleUpload}
+              disabled={!isAuthenticated || isLoading || !selectedFile || !uploadValue}
+              className="flex-1"
+            >
+              {isLoading ? 'Subiendo...' : 'Subir Documento'}
+            </Button>
+            <Button
+              onClick={() => {
+                setShowUploadModal(false);
+                setSelectedFile(null);
+                setUploadValue('');
+                setUploadDate(new Date().toISOString().split('T')[0]);
+              }}
+              variant="outline"
+              disabled={isLoading}
+            >
+              Cancelar
+            </Button>
           </div>
 
           {/* Barra de progreso */}

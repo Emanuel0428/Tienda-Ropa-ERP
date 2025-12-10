@@ -14,7 +14,7 @@ import {
   Loader2
 } from 'lucide-react';
 import jscanify from 'jscanify/src/jscanify';
-import { convertImageToPDF, generateFileName } from '../utils/pdfConverter';
+import { convertImageToPDF } from '../utils/pdfConverter';
 import { supabase } from '../supabaseClient';
 import { driveService, extractFolderIdFromLink } from '../services/driveService';
 
@@ -47,6 +47,9 @@ const CameraCapture: React.FC = () => {
   const [showInstructions, setShowInstructions] = useState(true);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [showMetadataForm, setShowMetadataForm] = useState(false);
+  const [uploadDate, setUploadDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [uploadValue, setUploadValue] = useState<string>('');
   
   const videoRef = useRef<HTMLVideoElement>(null);
   const previewCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -413,12 +416,24 @@ const CameraCapture: React.FC = () => {
     setCapturedImageData(null);
     setCorners([]);
     setIsEditingCorners(false);
+    setShowMetadataForm(false);
+    setUploadDate(new Date().toISOString().split('T')[0]);
+    setUploadValue('');
     startCamera();
+  };
+
+  const handleShowMetadataForm = () => {
+    setShowMetadataForm(true);
   };
 
   const handleConfirm = async () => {
     if (!scannedImage) {
       alert('❌ No hay imagen para subir');
+      return;
+    }
+
+    if (!uploadValue.trim()) {
+      alert('❌ Por favor ingresa el valor del documento');
       return;
     }
 
@@ -432,8 +447,9 @@ const CameraCapture: React.FC = () => {
       setIsUploading(true);
       setUploadProgress(0);
 
-      // Verificar autenticación
+      // Verificar autenticación antes de iniciar el proceso
       if (!driveService.isAuthenticated()) {
+        setIsUploading(false);
         alert('⚠️ Debes conectarte a Google Drive primero. Ve a Gestión de Documentos y conéctate.');
         navigate('/documents');
         return;
@@ -441,8 +457,13 @@ const CameraCapture: React.FC = () => {
 
       console.log('📤 Subiendo documento escaneado a carpeta:', driveFolderId);
 
-      // Generar nombre de archivo
-      const fileName = generateFileName(categoryName);
+      // Generar nombre de archivo: YYYYMMDD-TipoDocumento-$valor.pdf
+      const dateFormatted = uploadDate.replace(/-/g, ''); // YYYYMMDD
+      const categoryLabel = categoryName.replace(/\s+/g, '-'); // Reemplazar espacios con guiones
+      const formattedPrice = parseInt(uploadValue).toLocaleString('es-CO'); // Formatear con comas
+      const fileName = `${dateFormatted}-${categoryLabel}-$${formattedPrice}.pdf`;
+      
+      console.log('📝 Nombre de archivo:', fileName);
 
       // Convertir imagen a PDF
       setUploadProgress(20);
@@ -471,6 +492,11 @@ const CameraCapture: React.FC = () => {
       // Mostrar éxito
       alert(`✅ Documento "${fileName}" subido exitosamente a Google Drive!\n\nCategoría: ${categoryName}\nMes: ${currentMonth}\nCarpeta ID: ${driveFolderId}`);
       
+      // Resetear formulario
+      setShowMetadataForm(false);
+      setUploadValue('');
+      setUploadDate(new Date().toISOString().split('T')[0]);
+      
       // Navegar de vuelta
       navigate('/documents');
     } catch (error: any) {
@@ -481,6 +507,13 @@ const CameraCapture: React.FC = () => {
       
       if (error.message) {
         errorMessage = error.message;
+        
+        // Si el error es de autenticación, redirigir a Documents
+        if (error.message.includes('expirado') || error.message.includes('autenticado')) {
+          alert(`🔒 ${errorMessage}`);
+          navigate('/documents');
+          return;
+        }
       }
       
       alert(`❌ Error al subir documento:\n\n${errorMessage}`);
@@ -1031,12 +1064,83 @@ const CameraCapture: React.FC = () => {
               </div>
             ) : (
               /* Vista previa normal */
-              <div className="h-full flex items-center justify-center bg-gray-900 p-4">
+              <div className="h-full flex items-center justify-center bg-gray-900 p-4 relative">
                 <img 
                   src={scannedImage} 
                   alt="Documento escaneado" 
                   className="max-w-full max-h-full object-contain rounded-lg shadow-2xl"
                 />
+                
+                {/* Formulario de metadata */}
+                {showMetadataForm && (
+                  <div className="absolute inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-30">
+                    <div className="bg-white rounded-2xl shadow-2xl p-6 max-w-md w-full space-y-4">
+                      <div className="text-center mb-4">
+                        <h3 className="text-xl font-bold text-gray-900 mb-1">
+                          Información del Documento
+                        </h3>
+                        <p className="text-sm text-gray-600">
+                          {categoryName}
+                        </p>
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-semibold text-gray-700 mb-2">
+                          📅 Fecha del Documento
+                        </label>
+                        <input
+                          type="date"
+                          value={uploadDate}
+                          onChange={(e) => setUploadDate(e.target.value)}
+                          className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-green-500 text-base"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-semibold text-gray-700 mb-2">
+                          💵 Valor del Documento
+                        </label>
+                        <div className="relative">
+                          <span className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-500 text-lg font-semibold">$</span>
+                          <input
+                            type="text"
+                            value={uploadValue}
+                            onChange={(e) => {
+                              const value = e.target.value.replace(/[^0-9]/g, '');
+                              setUploadValue(value);
+                            }}
+                            placeholder="5000"
+                            className="w-full pl-10 pr-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-green-500 text-base"
+                          />
+                        </div>
+                        <p className="text-xs text-gray-500 mt-1">
+                          Ejemplo: Para $5,000 ingresa "5000"
+                        </p>
+                      </div>
+
+                      {uploadValue && (
+                        <div className="bg-green-50 border-2 border-green-200 rounded-xl p-3">
+                          <p className="text-xs font-semibold text-green-900 mb-1">Vista previa del nombre:</p>
+                          <p className="text-sm text-green-700 font-mono break-all">
+                            {uploadDate.replace(/-/g, '')}-{categoryName.replace(/\s+/g, '-')}-${parseInt(uploadValue).toLocaleString('es-CO')}.pdf
+                          </p>
+                        </div>
+                      )}
+
+                      <div className="flex gap-3 pt-2">
+                        <button
+                          onClick={() => {
+                            setShowMetadataForm(false);
+                            setUploadValue('');
+                          }}
+                          className="flex-1 px-4 py-3 border-2 border-gray-300 text-gray-700 font-semibold rounded-xl hover:bg-gray-50 transition-colors"
+                        >
+                          Volver
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </>
@@ -1129,49 +1233,63 @@ const CameraCapture: React.FC = () => {
                 <span className="text-sm font-medium">Ajustar</span>
               </button>
               
-              <button
-                onClick={handleConfirm}
-                disabled={isUploading}
-                className={`flex flex-col items-center gap-2 text-white transition-transform ${
-                  isUploading ? 'opacity-75 cursor-not-allowed' : 'hover:scale-110'
-                }`}
-              >
-                <div className="w-20 h-20 rounded-full bg-green-600 flex items-center justify-center shadow-lg shadow-green-600/50 hover:bg-green-700 transition-all relative">
-                  {isUploading ? (
-                    <>
-                      <Loader2 className="w-10 h-10 animate-spin" />
-                      {/* Círculo de progreso */}
-                      <svg className="absolute inset-0 w-full h-full -rotate-90">
-                        <circle
-                          cx="50%"
-                          cy="50%"
-                          r="38"
-                          fill="none"
-                          stroke="#ffffff40"
-                          strokeWidth="4"
-                        />
-                        <circle
-                          cx="50%"
-                          cy="50%"
-                          r="38"
-                          fill="none"
-                          stroke="#ffffff"
-                          strokeWidth="4"
-                          strokeDasharray={`${2 * Math.PI * 38}`}
-                          strokeDashoffset={`${2 * Math.PI * 38 * (1 - uploadProgress / 100)}`}
-                          strokeLinecap="round"
-                          className="transition-all duration-300"
-                        />
-                      </svg>
-                    </>
-                  ) : (
-                    <Upload className="w-10 h-10" />
-                  )}
-                </div>
-                <span className="text-sm font-semibold">
-                  {isUploading ? `Subiendo ${uploadProgress}%` : 'Subir a Drive'}
-                </span>
-              </button>
+              {!showMetadataForm ? (
+                <button
+                  onClick={handleShowMetadataForm}
+                  className="flex flex-col items-center gap-2 text-white hover:scale-110 transition-transform"
+                >
+                  <div className="w-20 h-20 rounded-full bg-green-600 flex items-center justify-center shadow-lg shadow-green-600/50 hover:bg-green-700 transition-all">
+                    <Check className="w-10 h-10" />
+                  </div>
+                  <span className="text-sm font-semibold">
+                    Continuar
+                  </span>
+                </button>
+              ) : (
+                <button
+                  onClick={handleConfirm}
+                  disabled={isUploading || !uploadValue}
+                  className={`flex flex-col items-center gap-2 text-white transition-transform ${
+                    (isUploading || !uploadValue) ? 'opacity-75 cursor-not-allowed' : 'hover:scale-110'
+                  }`}
+                >
+                  <div className="w-20 h-20 rounded-full bg-green-600 flex items-center justify-center shadow-lg shadow-green-600/50 hover:bg-green-700 transition-all relative">
+                    {isUploading ? (
+                      <>
+                        <Loader2 className="w-10 h-10 animate-spin" />
+                        {/* Círculo de progreso */}
+                        <svg className="absolute inset-0 w-full h-full -rotate-90">
+                          <circle
+                            cx="50%"
+                            cy="50%"
+                            r="38"
+                            fill="none"
+                            stroke="#ffffff40"
+                            strokeWidth="4"
+                          />
+                          <circle
+                            cx="50%"
+                            cy="50%"
+                            r="38"
+                            fill="none"
+                            stroke="#ffffff"
+                            strokeWidth="4"
+                            strokeDasharray={`${2 * Math.PI * 38}`}
+                            strokeDashoffset={`${2 * Math.PI * 38 * (1 - uploadProgress / 100)}`}
+                            strokeLinecap="round"
+                            className="transition-all duration-300"
+                          />
+                        </svg>
+                      </>
+                    ) : (
+                      <Upload className="w-10 h-10" />
+                    )}
+                  </div>
+                  <span className="text-sm font-semibold">
+                    {isUploading ? `Subiendo ${uploadProgress}%` : 'Subir a Drive'}
+                  </span>
+                </button>
+              )}
             </>
           ) : !isEditingCorners && (
             <button
