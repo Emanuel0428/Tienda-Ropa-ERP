@@ -488,6 +488,25 @@ const CameraCapture: React.FC = () => {
       setUploadProgress(100);
 
       console.log('✅ Documento subido exitosamente');
+      
+      // Guardar en localStorage que se subió este documento hoy
+      const today = new Date().toISOString().split('T')[0];
+      const stored = localStorage.getItem('documentsUploadedToday');
+      let uploadsData: any = { date: today, categories: {} };
+      
+      if (stored) {
+        try {
+          uploadsData = JSON.parse(stored);
+          if (uploadsData.date !== today) {
+            uploadsData = { date: today, categories: {} };
+          }
+        } catch {
+          uploadsData = { date: today, categories: {} };
+        }
+      }
+      
+      uploadsData.categories[categoryId] = today;
+      localStorage.setItem('documentsUploadedToday', JSON.stringify(uploadsData));
 
       // Mostrar éxito
       alert(`✅ Documento "${fileName}" subido exitosamente a Google Drive!\n\nCategoría: ${categoryName}\nMes: ${currentMonth}\nCarpeta ID: ${driveFolderId}`);
@@ -502,21 +521,34 @@ const CameraCapture: React.FC = () => {
     } catch (error: any) {
       console.error('❌ Error subiendo documento:', error);
       
-      // Mensajes más claros para el usuario
-      let errorMessage = 'Error al subir documento';
+      const errorMessage = error?.message || String(error);
       
-      if (error.message) {
-        errorMessage = error.message;
-        
-        // Si el error es de autenticación, redirigir a Documents
-        if (error.message.includes('expirado') || error.message.includes('autenticado')) {
-          alert(`🔒 ${errorMessage}`);
-          navigate('/documents');
-          return;
-        }
+      // Error 404: Carpeta no encontrada
+      if (errorMessage.includes('404') || errorMessage.includes('File not found') || errorMessage.includes('notFound')) {
+        alert(`❌ ERROR: CARPETA NO ENCONTRADA\n\n` +
+              `La carpeta de Google Drive no existe o no tienes acceso.\n\n` +
+              `Folder ID: ${driveFolderId}\n\n` +
+              `SOLUCIONES:\n` +
+              `1. Verifica que la carpeta exista en TU cuenta de Drive\n` +
+              `2. Asegúrate de estar autenticado con la cuenta correcta\n` +
+              `3. Ve a "Configuración Drive" y reconfigura el link\n` +
+              `4. Crea la carpeta manualmente en Drive y copia el link`);
+      } 
+      // Error 401: Token expirado
+      else if (errorMessage.includes('401') || errorMessage.includes('Token expirado') || errorMessage.includes('expirado') || errorMessage.includes('autenticado')) {
+        alert(`❌ SESIÓN EXPIRADA\n\n` +
+              `Tu sesión de Google Drive ha expirado.\n\n` +
+              `Por favor:\n` +
+              `1. Ve a "Documents"\n` +
+              `2. Cierra sesión\n` +
+              `3. Vuelve a conectar con Google Drive`);
+        navigate('/documents');
+        return;
+      } 
+      // Otros errores
+      else {
+        alert(`❌ Error al subir documento:\n\n${errorMessage}`);
       }
-      
-      alert(`❌ Error al subir documento:\n\n${errorMessage}`);
       
       setIsUploading(false);
       setUploadProgress(0);

@@ -6,17 +6,12 @@ import { Modal } from '../components/ui/Modal';
 import { Badge } from '../components/ui/Badge';
 import { 
   Upload, 
-  FileText, 
-  Download, 
-  Eye, 
-  Trash2,
-  Search,
   Camera,
   LogIn,
   LogOut,
   Settings
 } from 'lucide-react';
-import { driveService as driveService, DriveFile, extractFolderIdFromLink } from '../services/driveService';
+import { driveService as driveService, extractFolderIdFromLink } from '../services/driveService';
 import { supabase } from '../supabaseClient';
 
 interface DriveConfig {
@@ -30,18 +25,45 @@ interface DriveConfig {
 const Documents: React.FC = () => {
   const navigate = useNavigate();
   const [showUploadModal, setShowUploadModal] = useState(false);
-  const [selectedCategory, setSelectedCategory] = useState(''); // Para mostrar lista de documentos
   const [selectedUploadCategory, setSelectedUploadCategory] = useState('ventas');
   const [noDatafonoSales, setNoDatafonoSales] = useState<string[]>([]); // Días marcados como "sin ventas por datáfono"
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [documents, setDocuments] = useState<DriveFile[]>([]);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [driveConfigs, setDriveConfigs] = useState<DriveConfig[]>([]);
   const [currentMonth, setCurrentMonth] = useState<string>('');
   const [uploadDate, setUploadDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [uploadValue, setUploadValue] = useState<string>('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [documentsUploadedToday, setDocumentsUploadedToday] = useState<Record<string, string>>({});
+  
+  // Estados para subida personalizada
+  const [showCustomUploadModal, setShowCustomUploadModal] = useState(false);
+  const [customFileName, setCustomFileName] = useState<string>('');
+  const [customFolderLink, setCustomFolderLink] = useState<string>('');
+  const [customFile, setCustomFile] = useState<File | null>(null);
+
+  // Cargar documentos subidos hoy desde localStorage al iniciar
+  useEffect(() => {
+    const today = new Date().toISOString().split('T')[0];
+    const stored = localStorage.getItem('documentsUploadedToday');
+    
+    if (stored) {
+      try {
+        const parsed = JSON.parse(stored);
+        // Si es de hoy, usar los datos; si no, limpiar
+        if (parsed.date === today) {
+          setDocumentsUploadedToday(parsed.categories || {});
+        } else {
+          // Es de otro día, limpiar
+          localStorage.removeItem('documentsUploadedToday');
+          setDocumentsUploadedToday({});
+        }
+      } catch {
+        localStorage.removeItem('documentsUploadedToday');
+      }
+    }
+  }, []);
 
   // Inicializar Google Drive API
   useEffect(() => {
@@ -182,13 +204,6 @@ const Documents: React.FC = () => {
     return link;
   };
 
-  // Cargar documentos cuando se selecciona una categoría
-  useEffect(() => {
-    if (selectedCategory && selectedCategory !== 'all' && isAuthenticated) {
-      loadDocuments(selectedCategory);
-    }
-  }, [selectedCategory, isAuthenticated]);
-
   // Categorías específicas de documentos de tienda
   const documentCategories = [
     {
@@ -238,41 +253,6 @@ const Documents: React.FC = () => {
     }
   ];
 
-  // Función para cargar documentos de Google Drive
-  const loadDocuments = async (categoryId: string) => {
-    if (!isAuthenticated) return;
-    
-    setIsLoading(true);
-    try {
-      const driveLink = getDriveLinkForCategory(categoryId);
-      
-      if (!driveLink) {
-        alert(`No hay configuración de Drive para este tipo de documento en el mes ${currentMonth}. Por favor, configura el link en Configuración Drive.`);
-        setDocuments([]);
-        setIsLoading(false);
-        return;
-      }
-      
-      // Extraer el ID de la carpeta del link
-      const folderId = extractFolderIdFromLink(driveLink);
-      
-      if (!folderId) {
-        alert('El link de Drive configurado no es válido. Por favor, verifica la configuración.');
-        setDocuments([]);
-        setIsLoading(false);
-        return;
-      }
-      
-      const files = await driveService.listFiles(folderId);
-      setDocuments(files);
-    } catch (error) {
-      console.error('Error al cargar documentos:', error);
-      alert('Error al cargar documentos de Google Drive');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   // Función para autenticarse con Google
   const handleSignIn = async () => {
     try {
@@ -287,7 +267,6 @@ const Documents: React.FC = () => {
   const handleSignOut = () => {
     driveService.signOut();
     setIsAuthenticated(false);
-    setDocuments([]);
     alert('Sesión cerrada correctamente');
   };
 
@@ -297,21 +276,12 @@ const Documents: React.FC = () => {
   };
 
   // Función para obtener ícono según tipo de archivo
-  const getFileIcon = (type: string) => {
-    switch (type) {
-      case 'pdf':
-        return <FileText className="w-5 h-5 text-red-500" />;
-      default:
-        return <FileText className="w-5 h-5 text-gray-500" />;
-    }
+  // Función para verificar si un documento diario ya se subió hoy
+  const isDocumentUploadedToday = (categoryId: string) => {
+    // Solo verificar en el estado de documentos subidos hoy (localStorage)
+    const today = new Date().toISOString().split('T')[0];
+    return documentsUploadedToday[categoryId] === today;
   };
-
-  // Función para filtrar documentos
-  const filteredDocuments = documents.filter(() => {
-    if (selectedCategory === 'all') return true;
-    // Los archivos de Drive no tienen categoría, se asume que están en la carpeta correcta
-    return true;
-  });
 
   // Función para obtener color del badge según categoría
   const getCategoryBadgeVariant = (categoryId: string) => {
@@ -324,20 +294,6 @@ const Documents: React.FC = () => {
       case 'red': return 'error';
       default: return 'default';
     }
-  };
-
-  // Función para verificar si un documento diario ya se subió hoy
-  const isDocumentUploadedToday = (_categoryId: string) => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    
-    // Aquí necesitaríamos cargar los documentos de la categoría y verificar
-    // Por ahora retorna false para mantener la lógica existente
-    return documents.some(doc => {
-      const docDate = new Date(doc.createdTime);
-      docDate.setHours(0, 0, 0, 0);
-      return docDate.getTime() === today.getTime();
-    });
   };
 
   // Función para verificar si se marcó "sin ventas por datáfono" hoy
@@ -406,7 +362,13 @@ const Documents: React.FC = () => {
     });
     
     if (!driveLink) {
-      alert(`No hay configuración de Drive para ${category.name} en el mes ${currentMonth}. Por favor, configura el link en Configuración Drive.`);
+      alert(`⚠️ NO HAY CONFIGURACIÓN DE DRIVE\n\n` +
+            `Categoría: ${category.name}\n` +
+            `Mes: ${currentMonth}\n\n` +
+            `Por favor:\n` +
+            `1. Ve a "Configuración Drive"\n` +
+            `2. Configura el link de la carpeta para este mes\n` +
+            `3. Asegúrate que la carpeta exista en TU cuenta de Google Drive`);
       return;
     }
     
@@ -415,7 +377,9 @@ const Documents: React.FC = () => {
     console.log('📁 Folder ID extraído:', folderId);
     
     if (!folderId) {
-      alert('El link de Drive configurado no es válido. Por favor, verifica la configuración.');
+      alert(`⚠️ LINK DE DRIVE INVÁLIDO\n\n` +
+            `El link configurado no es válido:\n${driveLink}\n\n` +
+            `Por favor verifica que sea un link de carpeta de Google Drive`);
       return;
     }
     
@@ -446,15 +410,18 @@ const Documents: React.FC = () => {
       );
 
       console.log('✅ Archivo subido exitosamente');
-      alert(`¡Documento subido exitosamente a Google Drive!\n\nCategoría: ${category.name}\nMes: ${currentMonth}\nCarpeta ID: ${folderId}`);
       
-      // Recargar documentos de la categoría que acabamos de subir
-      await loadDocuments(selectedUploadCategory);
+      // Guardar en localStorage que se subió este documento hoy
+      const today = new Date().toISOString().split('T')[0];
+      const updatedUploads = { ...documentsUploadedToday, [selectedUploadCategory]: today };
+      setDocumentsUploadedToday(updatedUploads);
       
-      // Si estamos viendo otra categoría, mantenerla seleccionada pero los documentos se habrán actualizado
-      if (selectedCategory !== selectedUploadCategory) {
-        setSelectedCategory(selectedUploadCategory);
-      }
+      localStorage.setItem('documentsUploadedToday', JSON.stringify({
+        date: today,
+        categories: updatedUploads
+      }));
+      
+      alert(`✅ ¡Documento subido exitosamente!\n\nArchivo: ${newFileName}\nCategoría: ${category.name}\nMes: ${currentMonth}`);
 
       setShowUploadModal(false);
       setUploadProgress(0);
@@ -463,52 +430,100 @@ const Documents: React.FC = () => {
       setUploadDate(new Date().toISOString().split('T')[0]);
     } catch (error) {
       console.error('❌ Error al subir archivo:', error);
-      alert('Error al subir el documento a Google Drive');
+      
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      
+      if (errorMessage.includes('404') || errorMessage.includes('File not found') || errorMessage.includes('notFound')) {
+        alert(`❌ ERROR: CARPETA NO ENCONTRADA\n\n` +
+              `La carpeta de Google Drive no existe o no tienes acceso.\n\n` +
+              `Folder ID: ${folderId}\n\n` +
+              `SOLUCIONES:\n` +
+              `1. Verifica que la carpeta exista en TU cuenta de Drive\n` +
+              `2. Asegúrate de estar autenticado con la cuenta correcta\n` +
+              `3. Reconfigura el link en "Configuración Drive"\n` +
+              `4. Crea la carpeta manualmente en Drive y copia el link`);
+      } else if (errorMessage.includes('401') || errorMessage.includes('Token expirado')) {
+        alert(`❌ SESIÓN EXPIRADA\n\n` +
+              `Tu sesión de Google Drive ha expirado.\n\n` +
+              `Por favor:\n` +
+              `1. Cierra sesión\n` +
+              `2. Vuelve a conectar con Google Drive`);
+      } else {
+        alert(`❌ Error al subir documento:\n\n${errorMessage}`);
+      }
     } finally {
       setIsLoading(false);
     }
   };
 
-  // Función para eliminar archivo
-  const handleDelete = async (fileId: string, fileName: string) => {
-    if (!confirm(`¿Estás seguro de eliminar "${fileName}"?`)) {
+  // Función para subir archivo personalizado
+  const handleCustomUpload = async () => {
+    if (!customFile) {
+      alert('Por favor selecciona un archivo');
       return;
     }
 
+    if (!customFileName.trim()) {
+      alert('Por favor ingresa el nombre del archivo');
+      return;
+    }
+
+    if (!customFolderLink.trim()) {
+      alert('Por favor ingresa el link de la carpeta de Drive');
+      return;
+    }
+
+    if (!isAuthenticated) {
+      alert('Por favor inicia sesión con Google Drive primero');
+      return;
+    }
+
+    const folderId = extractFolderIdFromLink(customFolderLink);
+    
+    if (!folderId) {
+      alert('El link de Drive no es válido. Verifica que sea un link de carpeta.');
+      return;
+    }
+    
     try {
       setIsLoading(true);
-      await driveService.deleteFile(fileId);
-      alert('Documento eliminado exitosamente');
+      setUploadProgress(0);
+
+      console.log('⬆️ Subiendo archivo personalizado a carpeta:', folderId);
+
+      // Obtener extensión del archivo original
+      const originalExt = customFile.name.split('.').pop();
+      const finalFileName = customFileName.includes('.') ? customFileName : `${customFileName}.${originalExt}`;
+
+      // Crear nuevo File con el nombre personalizado
+      const renamedFile = new File([customFile], finalFileName, { type: customFile.type });
+
+      await driveService.uploadFile(
+        renamedFile,
+        folderId,
+        (progress) => {
+          setUploadProgress(progress.percentage);
+        }
+      );
+
+      console.log('✅ Archivo subido exitosamente');
+      alert(`¡Archivo subido exitosamente a Google Drive!\n\nNombre: ${finalFileName}\nCarpeta ID: ${folderId}`);
       
-      // Recargar documentos
-      if (selectedCategory && selectedCategory !== 'all') {
-        await loadDocuments(selectedCategory);
-      }
+      setShowCustomUploadModal(false);
+      setUploadProgress(0);
+      setCustomFile(null);
+      setCustomFileName('');
+      setCustomFolderLink('');
     } catch (error) {
-      console.error('Error al eliminar archivo:', error);
-      alert('Error al eliminar el documento');
+      console.error('❌ Error al subir archivo:', error);
+      alert('Error al subir el archivo a Google Drive');
     } finally {
       setIsLoading(false);
     }
   };
 
-  // Función para descargar archivo
-  const handleDownload = async (fileId: string, fileName: string) => {
-    try {
-      await driveService.downloadFile(fileId, fileName);
-    } catch (error) {
-      console.error('Error al descargar archivo:', error);
-      alert('Error al descargar el documento');
-    }
-  };
-
-  // Función para ver archivo (abrir en nueva pestaña)
-  const handleView = (webViewLink: string) => {
-    window.open(webViewLink, '_blank');
-  };
-
   return (
-    <div className="p-6 pt-20">
+    <div className="p-6 pt-24">
       <div className="flex justify-between items-center mb-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">📂 Gestión de Documentos</h1>
@@ -715,114 +730,40 @@ const Documents: React.FC = () => {
         </div>
       </div>
 
-      {/* Sección para ver todos los documentos */}
+      {/* Sección de subida personalizada */}
       <div className="mb-6">
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-gray-900">
-            {selectedCategory === 'all' ? 'Todos los Documentos' : `Documentos: ${getCategoryById(selectedCategory).name}`}
-          </h2>
-          <button
-            onClick={() => setSelectedCategory(selectedCategory === 'all' ? '' : 'all')}
-            className="text-sm text-blue-600 hover:underline"
-          >
-            {selectedCategory === 'all' ? 'Ocultar lista' : `Ver todos (${documents.length})`}
-          </button>
-        </div>
-      </div>
-
-      {/* Buscador y Lista de documentos - Solo se muestra cuando se selecciona una categoría */}
-      {selectedCategory && selectedCategory !== '' && (
-        <>
-          {/* Buscador */}
-          <div className="mb-6">
-            <div className="relative max-w-md">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-              <input
-                type="text"
-                placeholder="Buscar documentos..."
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
+        <Card className="border-2 border-dashed border-blue-300 bg-blue-50/50 p-6">
+          <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+            <div className="flex-1">
+              <h3 className="font-semibold text-gray-900 flex items-center gap-2 text-lg">
+                📁 Subir Archivo Personalizado
+              </h3>
+              <p className="text-sm text-gray-600 mt-2">
+                Sube cualquier archivo (imagen, documento, PDF) a una carpeta específica de Drive con nombre personalizado
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <Button
+                onClick={() => setShowCustomUploadModal(true)}
+                disabled={!isAuthenticated}
+                className="flex items-center gap-2"
+              >
+                <Upload className="w-4 h-4" />
+                Subir Archivo
+              </Button>
+              <Button
+                onClick={() => navigate('/camera?custom=true')}
+                disabled={!isAuthenticated}
+                variant="outline"
+                className="flex items-center gap-2"
+              >
+                <Camera className="w-4 h-4" />
+                Escanear
+              </Button>
             </div>
           </div>
-
-          {/* Lista de documentos */}
-          <div className="space-y-4">
-            {filteredDocuments.length > 0 ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {filteredDocuments.map((doc) => {
-                  const category = getCategoryById(selectedCategory);
-                  return (
-                    <Card key={doc.id} className="p-4">
-                      <div className="flex items-start space-x-3">
-                        <div className="p-2 bg-gray-50 rounded-lg">
-                          {getFileIcon('pdf')}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <h3 className="text-sm font-medium text-gray-900 truncate">
-                            {doc.name}
-                          </h3>
-                          <p className="text-xs text-gray-500 mt-1">
-                            {driveService.formatFileSize(parseInt(doc.size || '0'))} • {new Date(doc.createdTime).toLocaleDateString()}
-                          </p>
-                          <div className="flex items-center gap-2 mt-2">
-                            <Badge variant={getCategoryBadgeVariant(selectedCategory)} size="sm">
-                              {category.name}
-                            </Badge>
-                          </div>
-                        </div>
-                      </div>
-                      
-                      <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-200">
-                        <div className="flex space-x-2">
-                          <Button 
-                            variant="outline" 
-                            size="sm"
-                            onClick={() => handleView(doc.webViewLink)}
-                          >
-                            <Eye className="w-3 h-3 mr-1" />
-                            Ver
-                          </Button>
-                          <Button 
-                            variant="outline" 
-                            size="sm"
-                            onClick={() => handleDownload(doc.id, doc.name)}
-                          >
-                            <Download className="w-3 h-3 mr-1" />
-                            Descargar
-                          </Button>
-                        </div>
-                        <Button 
-                          variant="ghost" 
-                          size="sm" 
-                          className="text-red-600 hover:text-red-700"
-                          onClick={() => handleDelete(doc.id, doc.name)}
-                        >
-                          <Trash2 className="w-3 h-3" />
-                        </Button>
-                      </div>
-                    </Card>
-                  );
-                })}
-              </div>
-            ) : (
-              <div className="text-center py-12">
-                <FileText className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                <p className="text-gray-500">
-                  {selectedCategory === 'all' 
-                    ? 'No hay documentos disponibles' 
-                    : `No hay documentos en la categoría "${getCategoryById(selectedCategory).name}"`
-                  }
-                </p>
-                {!isAuthenticated && (
-                  <p className="text-sm text-gray-400 mt-2">
-                    Conecta con Google Drive para ver tus documentos
-                  </p>
-                )}
-              </div>
-            )}
-          </div>
-        </>
-      )}
+        </Card>
+      </div>
 
       {/* Modal de subida de PDF */}
       <Modal
@@ -945,6 +886,134 @@ const Documents: React.FC = () => {
                 setSelectedFile(null);
                 setUploadValue('');
                 setUploadDate(new Date().toISOString().split('T')[0]);
+              }}
+              variant="outline"
+              disabled={isLoading}
+            >
+              Cancelar
+            </Button>
+          </div>
+
+          {/* Barra de progreso */}
+          {isLoading && uploadProgress > 0 && (
+            <div className="space-y-2">
+              <div className="flex justify-between text-sm text-gray-600">
+                <span>Subiendo...</span>
+                <span>{uploadProgress}%</span>
+              </div>
+              <div className="w-full bg-gray-200 rounded-full h-2">
+                <div 
+                  className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                  style={{ width: `${uploadProgress}%` }}
+                />
+              </div>
+            </div>
+          )}
+        </div>
+      </Modal>
+
+      {/* Modal de subida personalizada */}
+      <Modal
+        isOpen={showCustomUploadModal}
+        onClose={() => {
+          setShowCustomUploadModal(false);
+          setCustomFile(null);
+          setCustomFileName('');
+          setCustomFolderLink('');
+        }}
+        title="📁 Subir Archivo Personalizado"
+      >
+        <div className="space-y-4">
+          {!isAuthenticated && (
+            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+              <p className="text-sm text-yellow-800">
+                ⚠️ Primero debes conectarte a Google Drive
+              </p>
+            </div>
+          )}
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Archivo
+            </label>
+            <input
+              type="file"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) {
+                  setCustomFile(file);
+                  // Sugerir nombre sin extensión
+                  const nameWithoutExt = file.name.replace(/\.[^/.]+$/, '');
+                  setCustomFileName(nameWithoutExt);
+                }
+              }}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              disabled={!isAuthenticated || isLoading}
+            />
+            {customFile && (
+              <p className="text-sm text-green-600 mt-1">
+                ✓ {customFile.name}
+              </p>
+            )}
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Nombre del Archivo
+            </label>
+            <input
+              type="text"
+              value={customFileName}
+              onChange={(e) => setCustomFileName(e.target.value)}
+              placeholder="Mi-Documento"
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              disabled={!isAuthenticated || isLoading}
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              La extensión se agregará automáticamente
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Link de Carpeta de Google Drive
+            </label>
+            <input
+              type="text"
+              value={customFolderLink}
+              onChange={(e) => setCustomFolderLink(e.target.value)}
+              placeholder="https://drive.google.com/drive/folders/..."
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono text-sm"
+              disabled={!isAuthenticated || isLoading}
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              Pega el link completo de la carpeta de Drive donde quieres guardar el archivo
+            </p>
+          </div>
+
+          {customFile && customFileName && customFolderLink && (
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+              <p className="text-xs font-medium text-blue-900 mb-1">ℹ️ Vista previa:</p>
+              <p className="text-sm text-blue-700 font-mono break-all">
+                {customFileName.includes('.') ? customFileName : `${customFileName}.${customFile.name.split('.').pop()}`}
+              </p>
+            </div>
+          )}
+
+          <div className="flex gap-2">
+            <Button
+              onClick={handleCustomUpload}
+              disabled={!isAuthenticated || isLoading || !customFile || !customFileName || !customFolderLink}
+              className="flex-1"
+            >
+              {isLoading ? 'Subiendo...' : 'Subir Archivo'}
+            </Button>
+            <Button
+              onClick={() => {
+                setShowCustomUploadModal(false);
+                setCustomFile(null);
+                setCustomFileName('');
+                setCustomFolderLink('');
               }}
               variant="outline"
               disabled={isLoading}
