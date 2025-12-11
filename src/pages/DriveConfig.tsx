@@ -29,7 +29,8 @@ const DriveConfig: React.FC = () => {
 
   // Tipos de documentos que se pueden subir
   const tiposDocumentos: TipoDocumento[] = [
-    { id: 'cierre_caja', nombre: 'Cierre de Caja', descripcion: 'Documentos de cierre diario de caja', icono: '💰' },
+    { id: 'ventas', nombre: 'Ventas', descripcion: 'Reportes de ventas mensuales', icono: '💰' },
+    { id: 'cierre_caja', nombre: 'Cierre de Caja', descripcion: 'Documentos de cierre diario de caja', icono: '📊' },
     { id: 'cierre_voucher', nombre: 'Cierre de Voucher', descripcion: 'Vouchers de tarjetas y pagos electrónicos', icono: '💳' },
     { id: 'consignaciones', nombre: 'Consignaciones', descripcion: 'Documentos de consignaciones bancarias', icono: '🏦' },
     { id: 'facturas_gastos', nombre: 'Facturas y Gastos', descripcion: 'Facturas de compras y gastos operativos', icono: '🧾' },

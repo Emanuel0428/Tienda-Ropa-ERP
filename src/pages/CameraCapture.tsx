@@ -1137,6 +1137,23 @@ const CameraCapture: React.FC = () => {
                         >
                           Volver
                         </button>
+                        <button
+                          onClick={() => {
+                            if (!uploadValue.trim()) {
+                              alert('❌ Por favor ingresa el valor del documento');
+                              return;
+                            }
+                            setShowMetadataForm(false);
+                          }}
+                          disabled={!uploadValue}
+                          className={`flex-1 px-4 py-3 font-semibold rounded-xl transition-colors ${
+                            uploadValue 
+                              ? 'bg-green-600 text-white hover:bg-green-700' 
+                              : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                          }`}
+                        >
+                          Confirmar
+                        </button>
                       </div>
                     </div>
                   </div>
@@ -1233,7 +1250,7 @@ const CameraCapture: React.FC = () => {
                 <span className="text-sm font-medium">Ajustar</span>
               </button>
               
-              {!showMetadataForm ? (
+              {!showMetadataForm && !uploadValue ? (
                 <button
                   onClick={handleShowMetadataForm}
                   className="flex flex-col items-center gap-2 text-white hover:scale-110 transition-transform"
@@ -1245,6 +1262,8 @@ const CameraCapture: React.FC = () => {
                     Continuar
                   </span>
                 </button>
+              ) : showMetadataForm ? (
+                null
               ) : (
                 <button
                   onClick={handleConfirm}
