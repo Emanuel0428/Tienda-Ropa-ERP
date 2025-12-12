@@ -17,6 +17,10 @@ import Auditoria from './pages/Auditoria';
 import AuditoriaHistorial from './pages/AuditoriaHistorial';
 import AuditoriaEstadisticas from './pages/AuditoriaEstadisticas';
 import PreguntasMaestras from './pages/PreguntasMaestras';
+import Attendance from './pages/Attendance';
+import AttendanceMonitor from './pages/AttendanceMonitor';
+import AttendanceSettings from './pages/AttendanceSettings';
+import EmployeeScheduleConfig from './pages/EmployeeScheduleConfig';
 import Auth from './pages/Auth';
 import Profile from './pages/Profile';
 import Settings from './pages/Settings';
@@ -80,6 +84,14 @@ function App() {
     return <>{children}</>;
   };
 
+  // Componente para rutas accesibles por admin y coordinador
+  const CoordinadorRoute = ({ children }: { children: React.ReactNode }) => {
+    if (user?.role !== 'admin' && user?.role !== 'coordinador') {
+      return <Navigate to="/dashboard" replace />;
+    }
+    return <>{children}</>;
+  };
+
   // Si hay usuario, mostrar la aplicación
   return (
     <div className="min-h-screen bg-gray-50">
@@ -101,6 +113,22 @@ function App() {
             <Route path="/documents" element={<Documents />} />
             <Route path="/drive-config" element={<DriveConfig />} />
             <Route path="/camera-capture" element={<CameraCapture />} />
+            <Route path="/attendance" element={<Attendance />} />
+            <Route path="/attendance-monitor" element={
+              <CoordinadorRoute>
+                <AttendanceMonitor />
+              </CoordinadorRoute>
+            } />
+            <Route path="/attendance-settings" element={
+              <AdminRoute>
+                <AttendanceSettings />
+              </AdminRoute>
+            } />
+            <Route path="/employee-schedules" element={
+              <AdminRoute>
+                <EmployeeScheduleConfig />
+              </AdminRoute>
+            } />
             <Route path="/tasks" element={<Tasks />} />
             <Route path="/sales" element={<Sales />} />
             <Route path="/sales-summary" element={<SalesSummary />} />

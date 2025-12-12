@@ -24,7 +24,8 @@ import {
   History,
   HelpCircle,
   PieChart,
-  Settings
+  Settings,
+  Calendar
 } from 'lucide-react';
 import { User } from '../../types';
 
@@ -40,6 +41,7 @@ const Sidebar: React.FC<SidebarProps> = ({ user }) => {
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [auditoriaExpanded, setAuditoriaExpanded] = useState(false);
   const [documentosExpanded, setDocumentosExpanded] = useState(false);
+  const [asistenciaExpanded, setAsistenciaExpanded] = useState(false);
 
   const getMenuItems = () => {
     const baseItems = [
@@ -103,11 +105,36 @@ const Sidebar: React.FC<SidebarProps> = ({ user }) => {
     ];
   };
 
+  // Opciones del menú de asistencia
+  const getAsistenciaOptions = () => {
+    const options = [
+      { id: 'mi-asistencia', label: 'Mi Asistencia', icon: Clock, path: '/attendance' }
+    ];
+
+    // Coordinador y Admin ven opciones adicionales
+    if (user?.role === 'coordinador' || user?.role === 'admin') {
+      options.push(
+        { id: 'monitor-asistencia', label: 'Monitor Tiendas', icon: Users, path: '/attendance-monitor' }
+      );
+    }
+
+    // Solo Admin ve configuración
+    if (user?.role === 'admin') {
+      options.push(
+        { id: 'config-asistencia', label: 'Configuración', icon: Settings, path: '/attendance-settings' },
+        { id: 'horarios-individuales', label: 'Horarios Individuales', icon: Calendar, path: '/employee-schedules' }
+      );
+    }
+
+    return options;
+  };
+
   const handleNavigation = (path: string) => {
     navigate(path);
     setIsMobileOpen(false);
     setAuditoriaExpanded(false); // Cerrar desplegable al navegar
     setDocumentosExpanded(false); // Cerrar desplegable de documentos al navegar
+    setAsistenciaExpanded(false); // Cerrar desplegable de asistencia al navegar
   };
 
   const isActiveRoute = (path: string) => {
@@ -136,6 +163,7 @@ const Sidebar: React.FC<SidebarProps> = ({ user }) => {
             setIsMobileOpen(false);
             setAuditoriaExpanded(false); // Cerrar desplegable al cerrar sidebar
             setDocumentosExpanded(false); // Cerrar desplegable de documentos
+            setAsistenciaExpanded(false); // Cerrar desplegable de asistencia
           }}
         />
       )}
@@ -235,6 +263,56 @@ const Sidebar: React.FC<SidebarProps> = ({ user }) => {
                 {documentosExpanded && (
                   <ul className="mt-1 ml-4 space-y-1">
                     {getDocumentosOptions().map((option) => {
+                      const OptionIcon = option.icon;
+                      const isActiveOption = isActiveRoute(option.path);
+                      
+                      return (
+                        <li key={option.id}>
+                          <button
+                            onClick={() => handleNavigation(option.path)}
+                            className={`w-full flex items-center space-x-3 px-3 py-2 rounded-md text-left transition-all duration-200 ${
+                              isActiveOption
+                                ? 'bg-primary-100 text-primary-700 shadow-sm'
+                                : 'text-gray-600 hover:bg-gray-100 hover:text-primary-600'
+                            }`}
+                          >
+                            <OptionIcon className={`w-4 h-4 ${isActiveOption ? 'text-primary-600' : 'text-gray-500'}`} />
+                            <span className="text-xs font-medium">{option.label}</span>
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </li>
+
+              {/* Sección de Asistencia con desplegable */}
+              <li>
+                <button
+                  onClick={() => setAsistenciaExpanded(!asistenciaExpanded)}
+                  className={`w-full flex items-center space-x-3 px-3 py-2.5 rounded-lg text-left transition-all duration-200 ${
+                    location.pathname.includes('/attendance')
+                      ? 'bg-primary-50 text-primary-700 border-r-2 border-primary-600 shadow-sm'
+                      : 'text-gray-600 hover:bg-gray-50 hover:text-primary-600'
+                  }`}
+                >
+                  <Clock className={`w-5 h-5 ${
+                    location.pathname.includes('/attendance')
+                      ? 'text-primary-600' 
+                      : 'text-gray-500'
+                  }`} />
+                  <span className="font-medium text-sm flex-1">Asistencia</span>
+                  {asistenciaExpanded ? (
+                    <ChevronDown className="w-4 h-4 text-gray-400" />
+                  ) : (
+                    <ChevronRight className="w-4 h-4 text-gray-400" />
+                  )}
+                </button>
+
+                {/* Submenu desplegable */}
+                {asistenciaExpanded && (
+                  <ul className="mt-1 ml-4 space-y-1">
+                    {getAsistenciaOptions().map((option) => {
                       const OptionIcon = option.icon;
                       const isActiveOption = isActiveRoute(option.path);
                       
