@@ -12,7 +12,42 @@ interface HeaderProps {
 const Header: React.FC<HeaderProps> = ({ user, onLogout }) => {
   const [showDropdown, setShowDropdown] = useState(false);
   const [showLateNotification, setShowLateNotification] = useState(false);
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const navigate = useNavigate();
+
+  // Cargar foto de perfil
+  React.useEffect(() => {
+    const loadAvatar = async () => {
+      if (!user?.id) return;
+      
+      try {
+        const { data, error } = await supabase
+          .from('usuarios')
+          .select('avatar_url')
+          .eq('id', user.id)
+          .single();
+
+        if (error) throw error;
+        if (data?.avatar_url) setAvatarUrl(data.avatar_url);
+      } catch (error) {
+        console.error('Error cargando avatar:', error);
+      }
+    };
+
+    loadAvatar();
+  }, [user?.id]);
+
+  // Escuchar cambios en el avatar
+  React.useEffect(() => {
+    const handleAvatarUpdate = (event: CustomEvent) => {
+      setAvatarUrl(event.detail.avatarUrl);
+    };
+
+    window.addEventListener('avatarUpdated', handleAvatarUpdate as EventListener);
+    return () => {
+      window.removeEventListener('avatarUpdated', handleAvatarUpdate as EventListener);
+    };
+  }, []);
 
   const checkAttendanceStatus = useCallback(async () => {
     try {
@@ -120,14 +155,14 @@ const Header: React.FC<HeaderProps> = ({ user, onLogout }) => {
                   onClick={() => setShowDropdown(!showDropdown)}
                   className="flex items-center space-x-2 lg:space-x-4 p-2 rounded-lg hover:bg-white/10 transition-colors"
                 >
-                  {user?.avatar ? (
+                  {avatarUrl ? (
                     <img
-                      src={user.avatar}
-                      alt={user.name}
-                      className="w-8 h-8 rounded-full object-cover"
+                      src={avatarUrl}
+                      alt={user?.name || 'Usuario'}
+                      className="w-8 h-8 rounded-full object-cover border-2 border-white/20"
                     />
                   ) : (
-                    <div className="w-8 h-8 bg-gray-300 rounded-full flex items-center justify-center">
+                    <div className="w-8 h-8 bg-gray-300 dark:bg-gray-600 rounded-full flex items-center justify-center">
                       <UserIcon className="w-4 h-4 text-white" />
                     </div>
                   )}
@@ -139,13 +174,13 @@ const Header: React.FC<HeaderProps> = ({ user, onLogout }) => {
                 </button>
 
                 {showDropdown && (
-                  <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-50">
+                  <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 py-1 z-50">
                     <button 
                       onClick={() => {
                         navigate('/profile');
                         setShowDropdown(false);
                       }}
-                      className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center space-x-2"
+                      className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center space-x-2"
                     >
                       <UserIcon className="w-4 h-4" />
                       <span>Perfil</span>
@@ -155,7 +190,7 @@ const Header: React.FC<HeaderProps> = ({ user, onLogout }) => {
                         navigate('/settings');
                         setShowDropdown(false);
                       }}
-                      className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center space-x-2"
+                      className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center space-x-2"
                     >
                       <Settings className="w-4 h-4" />
                       <span>Configuración</span>

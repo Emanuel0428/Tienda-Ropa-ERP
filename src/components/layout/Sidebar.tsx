@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { supabase } from '../../supabaseClient';
 import { 
   Home, 
   FileUp, 
@@ -25,7 +26,7 @@ import {
   HelpCircle,
   PieChart,
   Settings,
-  Calendar
+  RefreshCw
 } from 'lucide-react';
 import { User } from '../../types';
 
@@ -42,11 +43,62 @@ const Sidebar: React.FC<SidebarProps> = ({ user }) => {
   const [auditoriaExpanded, setAuditoriaExpanded] = useState(false);
   const [documentosExpanded, setDocumentosExpanded] = useState(false);
   const [asistenciaExpanded, setAsistenciaExpanded] = useState(false);
+  const [storeName, setStoreName] = useState<string>('');
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+
+  // Cargar nombre de la tienda y foto de perfil
+  React.useEffect(() => {
+    const loadUserData = async () => {
+      if (!user?.store) return;
+      
+      try {
+        // Cargar nombre de tienda
+        const { data: storeData, error: storeError } = await supabase
+          .from('tiendas')
+          .select('nombre')
+          .eq('id_tienda', user.store)
+          .single();
+
+        if (storeError) throw storeError;
+        if (storeData) setStoreName(storeData.nombre);
+
+        // Cargar foto de perfil
+        const { data: userData, error: userError } = await supabase
+          .from('usuarios')
+          .select('avatar_url')
+          .eq('id', user.id)
+          .single();
+
+        if (userError) throw userError;
+        if (userData?.avatar_url) setAvatarUrl(userData.avatar_url);
+      } catch (error) {
+        console.error('Error cargando datos de usuario:', error);
+      }
+    };
+
+    loadUserData();
+  }, [user?.store, user?.id]);
+
+  // Escuchar cambios en el avatar
+  React.useEffect(() => {
+    const handleAvatarUpdate = (event: CustomEvent) => {
+      setAvatarUrl(event.detail.avatarUrl);
+    };
+
+    window.addEventListener('avatarUpdated', handleAvatarUpdate as EventListener);
+    return () => {
+      window.removeEventListener('avatarUpdated', handleAvatarUpdate as EventListener);
+    };
+  }, []);
 
   const getMenuItems = () => {
     const baseItems = [
       { id: 'dashboard', label: 'Dashboard', icon: Home, path: '/dashboard' },
       // Documentos ya no es un item directo, ahora es un desplegable
+    ];
+
+    // Items exclusivos de admin
+    const adminOnlyItems = [
       { id: 'tasks', label: 'Tareas', icon: CheckSquare, path: '/tasks' },
       { id: 'sales', label: 'Ventas', icon: ShoppingCart, path: '/sales' },
       { id: 'sales-summary', label: 'Resumen Ventas', icon: BarChart3, path: '/sales-summary' },
@@ -59,6 +111,7 @@ const Sidebar: React.FC<SidebarProps> = ({ user }) => {
 
     // Admin ve todas las opciones
     if (user?.role === 'admin') {
+      baseItems.push(...adminOnlyItems);
       baseItems.splice(2, 0, 
         { id: 'stores', label: 'Tiendas', icon: Store, path: '/stores' },
         { id: 'users', label: 'Usuarios', icon: Users, path: '/users' },
@@ -67,15 +120,12 @@ const Sidebar: React.FC<SidebarProps> = ({ user }) => {
         { id: 'contentsquare-test', label: '🧪 Test ContentSquare', icon: HelpCircle, path: '/contentsquare-test' }
       );
     } else if (user?.role === 'coordinador') {
-      // Coordinador ve solo elementos específicos
+      // Coordinador ve solo elementos específicos (sin los adminOnlyItems)
       return [
         { id: 'dashboard', label: 'Dashboard', icon: Home, path: '/dashboard' },
         { id: 'stores', label: 'Tiendas', icon: Store, path: '/stores' },
         { id: 'users', label: 'Usuarios', icon: Users, path: '/users' },
         { id: 'analytics', label: 'Analíticas', icon: TrendingUp, path: '/analytics' },
-        { id: 'goals', label: 'Metas y Ranking', icon: Target, path: '/goals' },
-        { id: 'schedule', label: 'Horarios', icon: Clock, path: '/schedule' },
-        { id: 'notifications', label: 'Notificaciones', icon: Bell, path: '/notifications' },
       ];
     }
 
@@ -121,8 +171,8 @@ const Sidebar: React.FC<SidebarProps> = ({ user }) => {
     // Solo Admin ve configuración
     if (user?.role === 'admin') {
       options.push(
-        { id: 'config-asistencia', label: 'Configuración', icon: Settings, path: '/attendance-settings' },
-        { id: 'horarios-individuales', label: 'Horarios Individuales', icon: Calendar, path: '/employee-schedules' }
+        { id: 'config-asistencia', label: 'Configuración GPS', icon: Settings, path: '/attendance-settings' },
+        { id: 'horarios-rotativos', label: 'Horarios Rotativos', icon: RefreshCw, path: '/rotating-schedules' }
       );
     }
 
@@ -169,7 +219,7 @@ const Sidebar: React.FC<SidebarProps> = ({ user }) => {
       )}
 
       {/* Sidebar */}
-      <div className={`bg-white shadow-lg h-screen w-64 fixed left-0 top-0 z-40 border-r border-gray-200 transform transition-transform duration-300 flex flex-col ${
+      <div className={`bg-white dark:bg-gray-800 shadow-lg h-screen w-64 fixed left-0 top-0 z-40 border-r border-gray-200 dark:border-gray-700 transform transition-transform duration-300 flex flex-col ${
         isMobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
       }`}>
         
@@ -192,19 +242,29 @@ const Sidebar: React.FC<SidebarProps> = ({ user }) => {
         </div>
 
         {/* User info */}
-        <div className="p-4 border-b border-gray-100 bg-gray-50">
+        <div className="p-4 border-b border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-900">
           <div className="flex items-center space-x-3">
-            <div className="w-8 h-8 bg-gray-300 rounded-full flex items-center justify-center">
-              <span className="text-sm font-medium text-gray-700">
-                {user?.name?.charAt(0).toUpperCase()}
-              </span>
+            <div className="w-8 h-8 rounded-full overflow-hidden">
+              {avatarUrl ? (
+                <img 
+                  src={avatarUrl} 
+                  alt={user?.name || 'Usuario'} 
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <div className="w-full h-full bg-gray-300 dark:bg-gray-600 flex items-center justify-center">
+                  <span className="text-sm font-medium text-gray-700 dark:text-gray-200">
+                    {user?.name?.charAt(0).toUpperCase()}
+                  </span>
+                </div>
+              )}
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-gray-900 truncate">
+              <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
                 {user?.name}
               </p>
-              <p className="text-xs text-gray-500 truncate">
-                Tienda {user?.store}
+              <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                {storeName || `Tienda ${user?.store}`}
               </p>
             </div>
           </div>
@@ -226,7 +286,7 @@ const Sidebar: React.FC<SidebarProps> = ({ user }) => {
                       className={`w-full flex items-center space-x-3 px-3 py-2.5 rounded-lg text-left transition-all duration-200 ${
                         isActive
                           ? 'bg-primary-50 text-primary-700 border-r-2 border-primary-600 shadow-sm'
-                          : 'text-gray-600 hover:bg-gray-50 hover:text-primary-600'
+                          : 'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-primary-600 dark:hover:text-primary-400'
                       }`}
                     >
                       <Icon className={`w-5 h-5 ${isActive ? 'text-primary-600' : 'text-gray-500'}`} />
@@ -243,7 +303,7 @@ const Sidebar: React.FC<SidebarProps> = ({ user }) => {
                   className={`w-full flex items-center space-x-3 px-3 py-2.5 rounded-lg text-left transition-all duration-200 ${
                     location.pathname.includes('/documents') || location.pathname.includes('/drive-config')
                       ? 'bg-primary-50 text-primary-700 border-r-2 border-primary-600 shadow-sm'
-                      : 'text-gray-600 hover:bg-gray-50 hover:text-primary-600'
+                      : 'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-primary-600 dark:hover:text-primary-400'
                   }`}
                 >
                   <FileUp className={`w-5 h-5 ${
@@ -273,7 +333,7 @@ const Sidebar: React.FC<SidebarProps> = ({ user }) => {
                             className={`w-full flex items-center space-x-3 px-3 py-2 rounded-md text-left transition-all duration-200 ${
                               isActiveOption
                                 ? 'bg-primary-100 text-primary-700 shadow-sm'
-                                : 'text-gray-600 hover:bg-gray-100 hover:text-primary-600'
+                                : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-primary-600 dark:hover:text-primary-400'
                             }`}
                           >
                             <OptionIcon className={`w-4 h-4 ${isActiveOption ? 'text-primary-600' : 'text-gray-500'}`} />
@@ -293,7 +353,7 @@ const Sidebar: React.FC<SidebarProps> = ({ user }) => {
                   className={`w-full flex items-center space-x-3 px-3 py-2.5 rounded-lg text-left transition-all duration-200 ${
                     location.pathname.includes('/attendance')
                       ? 'bg-primary-50 text-primary-700 border-r-2 border-primary-600 shadow-sm'
-                      : 'text-gray-600 hover:bg-gray-50 hover:text-primary-600'
+                      : 'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-primary-600 dark:hover:text-primary-400'
                   }`}
                 >
                   <Clock className={`w-5 h-5 ${
@@ -323,7 +383,7 @@ const Sidebar: React.FC<SidebarProps> = ({ user }) => {
                             className={`w-full flex items-center space-x-3 px-3 py-2 rounded-md text-left transition-all duration-200 ${
                               isActiveOption
                                 ? 'bg-primary-100 text-primary-700 shadow-sm'
-                                : 'text-gray-600 hover:bg-gray-100 hover:text-primary-600'
+                                : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-primary-600 dark:hover:text-primary-400'
                             }`}
                           >
                             <OptionIcon className={`w-4 h-4 ${isActiveOption ? 'text-primary-600' : 'text-gray-500'}`} />
@@ -345,7 +405,7 @@ const Sidebar: React.FC<SidebarProps> = ({ user }) => {
                     className={`w-full flex items-center space-x-3 px-3 py-2.5 rounded-lg text-left transition-all duration-200 ${
                       location.pathname.includes('/auditoria') || location.pathname.includes('/preguntas-maestras')
                         ? 'bg-primary-50 text-primary-700 border-r-2 border-primary-600 shadow-sm'
-                        : 'text-gray-600 hover:bg-gray-50 hover:text-primary-600'
+                        : 'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-primary-600 dark:hover:text-primary-400'
                     }`}
                   >
                     <Search className={`w-5 h-5 ${
@@ -375,7 +435,7 @@ const Sidebar: React.FC<SidebarProps> = ({ user }) => {
                               className={`w-full flex items-center space-x-3 px-3 py-2 rounded-md text-left transition-all duration-200 ${
                                 isActiveOption
                                   ? 'bg-primary-100 text-primary-700 shadow-sm'
-                                  : 'text-gray-600 hover:bg-gray-100 hover:text-primary-600'
+                                  : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-primary-600 dark:hover:text-primary-400'
                               }`}
                             >
                               <OptionIcon className={`w-4 h-4 ${isActiveOption ? 'text-primary-600' : 'text-gray-500'}`} />

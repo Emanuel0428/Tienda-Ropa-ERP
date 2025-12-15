@@ -2,6 +2,25 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Estilos base para modo oscuro */
+@layer base {
+  :root {
+    color-scheme: light;
+  }
+  
+  .dark {
+    color-scheme: dark;
+  }
+  
+  .dark body {
+    @apply bg-gray-900 text-gray-100;
+  }
+  
+  body {
+    @apply bg-gray-50 text-gray-900;
+  }
+}
+
 /* Mejoras para experiencia móvil */
 @layer utilities {
   .touch-manipulation {

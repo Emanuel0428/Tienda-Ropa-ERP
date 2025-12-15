@@ -1,6 +1,7 @@
 import React from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from './hooks/useAuth';
+import { useDarkMode } from './hooks/useDarkMode';
 import { useContentSquare } from './hooks/useContentSquare';
 import Sidebar from './components/layout/Sidebar';
 import Header from './components/layout/Header';
@@ -20,7 +21,7 @@ import PreguntasMaestras from './pages/PreguntasMaestras';
 import Attendance from './pages/Attendance';
 import AttendanceMonitor from './pages/AttendanceMonitor';
 import AttendanceSettings from './pages/AttendanceSettings';
-import EmployeeScheduleConfig from './pages/EmployeeScheduleConfig';
+import RotatingSchedules from './pages/RotatingSchedules';
 import Auth from './pages/Auth';
 import Profile from './pages/Profile';
 import Settings from './pages/Settings';
@@ -38,6 +39,9 @@ const Notifications = () => <div className="p-6 mt-10"><h1 className="text-2xl f
 
 function App() {
   const { user, loading, signOut } = useAuth();
+  
+  // Aplicar tema oscuro desde el inicio
+  useDarkMode();
   
   // Inicializar ContentSquare
   const { setUserId, setCustomVariable, tagSession } = useContentSquare();
@@ -94,7 +98,7 @@ function App() {
 
   // Si hay usuario, mostrar la aplicación
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       <Sidebar 
         user={user} 
         activeRoute="" 
@@ -105,7 +109,7 @@ function App() {
           user={user} 
           onLogout={signOut}
         />
-        <main className="flex-1 overflow-y-auto pt-20 p-4 lg:p-6">
+        <main className="flex-1 overflow-y-auto pt-20 p-4 lg:p-6 bg-gray-50 dark:bg-gray-900">
           <Routes>
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
             <Route path="/auth" element={<Navigate to="/dashboard" replace />} />
@@ -124,9 +128,9 @@ function App() {
                 <AttendanceSettings />
               </AdminRoute>
             } />
-            <Route path="/employee-schedules" element={
+            <Route path="/rotating-schedules" element={
               <AdminRoute>
-                <EmployeeScheduleConfig />
+                <RotatingSchedules />
               </AdminRoute>
             } />
             <Route path="/tasks" element={<Tasks />} />

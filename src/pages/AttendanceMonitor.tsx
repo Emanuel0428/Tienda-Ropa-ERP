@@ -12,6 +12,8 @@ interface ActiveEmployee {
   check_in: string;
   duration: string;
   wifi_verified: boolean;
+  isLate: boolean;
+  expectedTime: string | null;
 }
 
 interface StoreAttendance {
@@ -110,8 +112,31 @@ const AttendanceMonitor: React.FC = () => {
             };
           }
 
+          // Cargar horarios individuales para hoy
+          const { data: schedules } = await supabase
+            .from('employee_schedules')
+            .select('id_usuario, check_in_deadline, is_day_off')
+            .eq('schedule_date', today)
+            .in('id_usuario', (activeRecords || []).map(r => r.id_usuario));
+
+          const schedulesMap = new Map(
+            (schedules || []).map(s => [s.id_usuario, s])
+          );
+
           const employees: ActiveEmployee[] = (activeRecords || []).map(record => {
             const checkInTime = new Date(record.check_in);
+            const schedule = schedulesMap.get(record.id_usuario);
+            
+            let isLate = false;
+            let expectedTime: string | null = null;
+            
+            if (schedule && !schedule.is_day_off) {
+              expectedTime = schedule.check_in_deadline;
+              const [hours, minutes] = schedule.check_in_deadline.split(':');
+              const deadline = new Date(checkInTime);
+              deadline.setHours(parseInt(hours), parseInt(minutes), 0, 0);
+              isLate = checkInTime > deadline;
+            }
             
             return {
               id_usuario: record.id_usuario,
@@ -119,7 +144,9 @@ const AttendanceMonitor: React.FC = () => {
               rol: (record.usuarios as any).rol,
               check_in: record.check_in,
               duration: calculateDuration(checkInTime),
-              wifi_verified: record.wifi_verified
+              wifi_verified: record.wifi_verified,
+              isLate,
+              expectedTime
             };
           });
 
@@ -270,7 +297,7 @@ const AttendanceMonitor: React.FC = () => {
                         </div>
                         <div>
                           <p className="font-medium text-gray-900">{employee.nombre}</p>
-                          <div className="flex items-center gap-2 mt-1">
+                          <div className="flex items-center gap-2 mt-1 flex-wrap">
                             <Badge variant={getRoleBadgeVariant(employee.rol)} size="sm">
                               {employee.rol}
                             </Badge>
@@ -279,6 +306,11 @@ const AttendanceMonitor: React.FC = () => {
                             ) : (
                               <span className="text-xs text-orange-600">⚠ Sin verificar WiFi</span>
                             )}
+                            {employee.isLate && (
+                              <Badge variant="error" size="sm">
+                                🕐 Llegada tarde
+                              </Badge>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -286,6 +318,11 @@ const AttendanceMonitor: React.FC = () => {
                         <p className="text-sm font-medium text-gray-900">
                           Entrada: {formatTime(employee.check_in)}
                         </p>
+                        {employee.expectedTime && (
+                          <p className="text-xs text-gray-500">
+                            Hora límite: {employee.expectedTime}
+                          </p>
+                        )}
                         <p className="text-sm text-gray-600">
                           Duración: {employee.duration}
                         </p>

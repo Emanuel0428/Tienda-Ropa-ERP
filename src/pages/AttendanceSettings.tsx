@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
-import { Settings, Save, Clock, Bell, Store as StoreIcon, RefreshCw, MapPin } from 'lucide-react';
+import { Settings, Save, Store as StoreIcon, RefreshCw, MapPin } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 
 interface StoreSchedule {
@@ -28,6 +28,19 @@ const AttendanceSettings: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState<number | null>(null);
   const [userRole, setUserRole] = useState<string | null>(null);
+  const [expandedStores, setExpandedStores] = useState<Set<number>>(new Set());
+
+  const toggleStore = (idTienda: number) => {
+    setExpandedStores(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(idTienda)) {
+        newSet.delete(idTienda);
+      } else {
+        newSet.add(idTienda);
+      }
+      return newSet;
+    });
+  };
 
   const checkUserRole = useCallback(async () => {
     try {
@@ -259,210 +272,120 @@ const AttendanceSettings: React.FC = () => {
 
         {/* Lista de tiendas */}
         <div className="space-y-4">
-          {stores.map((store) => (
-            <Card key={store.id_tienda}>
-              <div className="flex items-center gap-3 mb-4">
-                <div className="p-2 bg-primary-100 rounded-lg">
-                  <StoreIcon className="w-6 h-6 text-primary-600" />
-                </div>
-                <h2 className="text-xl font-semibold text-gray-900">{store.nombre_tienda}</h2>
-              </div>
-
-              {/* Horarios Semanales */}
-              <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                <h3 className="font-medium text-gray-900 mb-3 flex items-center gap-2">
-                  <Clock className="w-5 h-5 text-blue-600" />
-                  Horarios por Día de la Semana
-                </h3>
-                <p className="text-sm text-gray-600 mb-4">
-                  Configura horarios diferentes para cada día. Si todos los días tienen el mismo horario, usa la misma hora para todos.
-                </p>
-                
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                  {/* Lunes */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      🔵 Lunes
-                    </label>
-                    <input
-                      type="time"
-                      value={store.monday_check_in_deadline}
-                      onChange={(e) => updateStore(store.id_tienda, 'monday_check_in_deadline', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                    />
-                  </div>
-
-                  {/* Martes */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      🔵 Martes
-                    </label>
-                    <input
-                      type="time"
-                      value={store.tuesday_check_in_deadline}
-                      onChange={(e) => updateStore(store.id_tienda, 'tuesday_check_in_deadline', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                    />
-                  </div>
-
-                  {/* Miércoles */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      🔵 Miércoles
-                    </label>
-                    <input
-                      type="time"
-                      value={store.wednesday_check_in_deadline}
-                      onChange={(e) => updateStore(store.id_tienda, 'wednesday_check_in_deadline', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                    />
-                  </div>
-
-                  {/* Jueves */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      🔵 Jueves
-                    </label>
-                    <input
-                      type="time"
-                      value={store.thursday_check_in_deadline}
-                      onChange={(e) => updateStore(store.id_tienda, 'thursday_check_in_deadline', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                    />
-                  </div>
-
-                  {/* Viernes */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      🔵 Viernes
-                    </label>
-                    <input
-                      type="time"
-                      value={store.friday_check_in_deadline}
-                      onChange={(e) => updateStore(store.id_tienda, 'friday_check_in_deadline', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                    />
-                  </div>
-
-                  {/* Sábado */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      🟢 Sábado
-                    </label>
-                    <input
-                      type="time"
-                      value={store.saturday_check_in_deadline}
-                      onChange={(e) => updateStore(store.id_tienda, 'saturday_check_in_deadline', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                    />
-                  </div>
-
-                  {/* Domingo */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      🟢 Domingo
-                    </label>
-                    <input
-                      type="time"
-                      value={store.sunday_check_in_deadline}
-                      onChange={(e) => updateStore(store.id_tienda, 'sunday_check_in_deadline', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Notificaciones */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
-                    <Bell className="w-4 h-4" />
-                    Notificaciones
-                  </label>
-                  <div className="flex items-center h-10">
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={store.notification_enabled}
-                        onChange={(e) => updateStore(store.id_tienda, 'notification_enabled', e.target.checked)}
-                        className="w-5 h-5 text-primary-600 rounded focus:ring-2 focus:ring-primary-500"
-                      />
-                      <span className="text-sm text-gray-700">Alertar tardanzas</span>
-                    </label>
-                  </div>
-                </div>
-              </div>
-
-              {/* Sección GPS */}
-              <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg">
-                <h3 className="font-medium text-gray-900 mb-3 flex items-center gap-2">
-                  <MapPin className="w-5 h-5 text-green-600" />
-                  Verificación por GPS (Recomendado)
-                </h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  {/* Latitud */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Latitud
-                    </label>
-                    <input
-                      type="number"
-                      step="any"
-                      value={store.latitude || ''}
-                      onChange={(e) => updateStore(store.id_tienda, 'latitude', e.target.value ? parseFloat(e.target.value) : null)}
-                      placeholder="Ej: 4.123456"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                    />
-                  </div>
-
-                  {/* Longitud */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Longitud
-                    </label>
-                    <input
-                      type="number"
-                      step="any"
-                      value={store.longitude || ''}
-                      onChange={(e) => updateStore(store.id_tienda, 'longitude', e.target.value ? parseFloat(e.target.value) : null)}
-                      placeholder="Ej: -74.123456"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                    />
-                  </div>
-
-                  {/* Radio */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Radio (metros)
-                    </label>
-                    <input
-                      type="number"
-                      value={store.location_radius_meters}
-                      onChange={(e) => updateStore(store.id_tienda, 'location_radius_meters', parseInt(e.target.value) || 100)}
-                      placeholder="100"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                    />
-                    <p className="text-xs text-gray-500 mt-1">
-                      Distancia máxima permitida
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Botón guardar */}
-              <div className="mt-4 flex justify-end">
-                <Button
-                  onClick={() => handleSave(store)}
-                  disabled={isSaving === store.id_tienda}
-                  variant="primary"
-                  className="flex items-center gap-2"
+          {stores.map((store) => {
+            const isExpanded = expandedStores.has(store.id_tienda);
+            
+            return (
+              <Card key={store.id_tienda}>
+                {/* Header de la tienda - siempre visible */}
+                <button
+                  onClick={() => toggleStore(store.id_tienda)}
+                  className="w-full flex items-center justify-between gap-3 p-2 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-lg transition-colors"
                 >
-                  <Save className="w-4 h-4" />
-                  {isSaving === store.id_tienda ? 'Guardando...' : 'Guardar Configuración'}
-                </Button>
-              </div>
-            </Card>
-          ))}
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-primary-100 dark:bg-primary-900 rounded-lg">
+                      <StoreIcon className="w-6 h-6 text-primary-600 dark:text-primary-400" />
+                    </div>
+                    <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100">{store.nombre_tienda}</h2>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {store.latitude && store.longitude && (
+                      <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full">
+                        ✓ GPS Configurado
+                      </span>
+                    )}
+                    <span className={`transform transition-transform ${isExpanded ? 'rotate-90' : ''}`}>
+                      ▶
+                    </span>
+                  </div>
+                </button>
+
+                {/* Contenido expandible - solo ubicación GPS */}
+                {isExpanded && (
+                  <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+                    {/* Sección GPS */}
+                    <div className="p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
+                      <h3 className="font-medium text-gray-900 dark:text-gray-100 mb-3 flex items-center gap-2">
+                        <MapPin className="w-5 h-5 text-green-600 dark:text-green-400" />
+                        Verificación por Ubicación GPS
+                      </h3>
+                      <p className="text-sm text-gray-600 dark:text-gray-300 mb-4">
+                        Configura las coordenadas GPS de la tienda para verificar que los empleados estén en la ubicación correcta al dar entrada.
+                      </p>
+                      
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        {/* Latitud */}
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                            Latitud
+                          </label>
+                          <input
+                            type="number"
+                            step="any"
+                            value={store.latitude || ''}
+                            onChange={(e) => updateStore(store.id_tienda, 'latitude', e.target.value ? parseFloat(e.target.value) : null)}
+                            placeholder="Ej: 4.123456"
+                            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                          />
+                        </div>
+
+                        {/* Longitud */}
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                            Longitud
+                          </label>
+                          <input
+                            type="number"
+                            step="any"
+                            value={store.longitude || ''}
+                            onChange={(e) => updateStore(store.id_tienda, 'longitude', e.target.value ? parseFloat(e.target.value) : null)}
+                            placeholder="Ej: -74.123456"
+                            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                          />
+                        </div>
+
+                        {/* Radio */}
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                            Radio (metros)
+                          </label>
+                          <input
+                            type="number"
+                            value={store.location_radius_meters}
+                            onChange={(e) => updateStore(store.id_tienda, 'location_radius_meters', parseInt(e.target.value) || 100)}
+                            placeholder="100"
+                            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                          />
+                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                            Distancia máxima permitida
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                        <p className="text-sm text-blue-800 dark:text-blue-300">
+                          <strong>💡 Cómo obtener coordenadas:</strong> Abre Google Maps, busca tu tienda, haz clic derecho y copia las coordenadas (formato: 4.123456, -74.123456)
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Botón guardar */}
+                    <div className="mt-4 flex justify-end">
+                      <Button
+                        onClick={() => handleSave(store)}
+                        disabled={isSaving === store.id_tienda}
+                        variant="primary"
+                        className="flex items-center gap-2"
+                      >
+                        <Save className="w-4 h-4" />
+                        {isSaving === store.id_tienda ? 'Guardando...' : 'Guardar Configuración'}
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </Card>
+            );
+          })}
         </div>
 
         {stores.length === 0 && !isLoading && (

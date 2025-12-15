@@ -12,7 +12,7 @@ export const Card: React.FC<CardProps> = ({
   padding = true 
 }) => {
   return (
-    <div className={`bg-white rounded-lg shadow-sm border border-gray-200 ${padding ? 'p-6' : ''} ${className}`}>
+    <div className={`bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 ${padding ? 'p-6' : ''} ${className}`}>
       {children}
     </div>
   );
@@ -25,7 +25,7 @@ interface CardHeaderProps {
 
 export const CardHeader: React.FC<CardHeaderProps> = ({ children, className = '' }) => {
   return (
-    <div className={`border-b border-gray-200 pb-4 mb-4 ${className}`}>
+    <div className={`border-b border-gray-200 dark:border-gray-700 pb-4 mb-4 ${className}`}>
       {children}
     </div>
   );

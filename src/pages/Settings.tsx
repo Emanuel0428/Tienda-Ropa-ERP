@@ -11,7 +11,9 @@ import {
   Save,
   Key,
   AlertTriangle,
-  CheckCircle
+  CheckCircle,
+  Moon,
+  Sun
 } from 'lucide-react';
 
 const Settings: React.FC = () => {
@@ -30,9 +32,37 @@ const Settings: React.FC = () => {
   const [preferences, setPreferences] = useState({
     notifications: true,
     emailUpdates: false,
-    darkMode: false,
+    darkMode: localStorage.getItem('darkMode') === 'true',
     language: 'es'
   });
+
+  // Aplicar tema al montar el componente
+  React.useEffect(() => {
+    if (preferences.darkMode) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  }, []);
+
+  // Función para cambiar el tema
+  const toggleDarkMode = (enabled: boolean) => {
+    console.log('🌙 Cambiando modo oscuro a:', enabled);
+    console.log('📄 HTML element:', document.documentElement);
+    console.log('📋 Clases antes:', document.documentElement.className);
+    
+    setPreferences({...preferences, darkMode: enabled});
+    localStorage.setItem('darkMode', enabled.toString());
+    
+    if (enabled) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+    
+    console.log('📋 Clases después:', document.documentElement.className);
+    console.log('✅ LocalStorage darkMode:', localStorage.getItem('darkMode'));
+  };
 
   const handlePasswordChange = async () => {
     if (!passwordData.currentPassword || !passwordData.newPassword || !passwordData.confirmPassword) {
@@ -130,23 +160,23 @@ const Settings: React.FC = () => {
 
   return (
     <div className="max-w-6xl mx-auto p-6 pt-16">
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
         {/* Header */}
-        <div className="px-6 py-4 border-b border-gray-200">
+        <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
           <div className="flex items-center space-x-3">
-            <div className="w-12 h-12 bg-primary-100 rounded-full flex items-center justify-center">
-              <SettingsIcon className="w-6 h-6 text-primary-600" />
+            <div className="w-12 h-12 bg-primary-100 dark:bg-primary-900 rounded-full flex items-center justify-center">
+              <SettingsIcon className="w-6 h-6 text-primary-600 dark:text-primary-400" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">Configuración</h1>
-              <p className="text-sm text-gray-500">Gestiona tu cuenta y preferencias</p>
+              <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Configuración</h1>
+              <p className="text-sm text-gray-500 dark:text-gray-400">Gestiona tu cuenta y preferencias</p>
             </div>
           </div>
         </div>
 
         <div className="flex">
           {/* Sidebar */}
-          <div className="w-64 border-r border-gray-200">
+          <div className="w-64 border-r border-gray-200 dark:border-gray-700">
             <nav className="p-4 space-y-2">
               {tabs.map((tab) => {
                 const Icon = tab.icon;
@@ -156,8 +186,8 @@ const Settings: React.FC = () => {
                     onClick={() => setActiveTab(tab.id)}
                     className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-colors ${
                       activeTab === tab.id
-                        ? 'bg-primary-50 text-primary-700 border border-primary-200'
-                        : 'text-gray-700 hover:bg-gray-50'
+                        ? 'bg-primary-50 dark:bg-primary-900 text-primary-700 dark:text-primary-300 border border-primary-200 dark:border-primary-700'
+                        : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
                     }`}
                   >
                     <Icon className="w-5 h-5" />
@@ -287,15 +317,22 @@ const Settings: React.FC = () => {
                     </div>
                     
                     <div className="flex items-center justify-between">
-                      <div>
-                        <h4 className="text-sm font-medium text-gray-900">Modo Oscuro</h4>
-                        <p className="text-sm text-gray-500">Cambiar a tema oscuro</p>
+                      <div className="flex items-center space-x-2">
+                        {preferences.darkMode ? (
+                          <Moon className="w-5 h-5 text-primary-600" />
+                        ) : (
+                          <Sun className="w-5 h-5 text-yellow-500" />
+                        )}
+                        <div>
+                          <h4 className="text-sm font-medium text-gray-900">Modo Oscuro</h4>
+                          <p className="text-sm text-gray-500">Cambiar a tema oscuro</p>
+                        </div>
                       </div>
                       <label className="relative inline-flex items-center cursor-pointer">
                         <input
                           type="checkbox"
                           checked={preferences.darkMode}
-                          onChange={(e) => setPreferences({...preferences, darkMode: e.target.checked})}
+                          onChange={(e) => toggleDarkMode(e.target.checked)}
                           className="sr-only peer"
                         />
                         <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-600"></div>
