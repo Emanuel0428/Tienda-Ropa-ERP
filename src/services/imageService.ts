@@ -33,13 +33,6 @@ export const subirFotoAuditoria = async (
   archivo: File
 ): Promise<{ success: boolean; data?: AuditoriaFoto; error?: string }> => {
   try {
-    console.log('📱 Procesando archivo iOS:', {
-      name: archivo.name,
-      size: archivo.size,
-      type: archivo.type,
-      lastModified: archivo.lastModified
-    });
-
     // Validar archivo - incluir formatos iOS
     const formatosPermitidos = [
       'image/jpeg', 'image/jpg', 'image/png', 'image/webp',
@@ -85,7 +78,6 @@ export const subirFotoAuditoria = async (
     // Convertir formatos iOS a JPG para compatibilidad
     if (extension === 'heic' || extension === 'heif') {
       extension = 'jpg';
-      console.log('📱 Convirtiendo formato iOS HEIC/HEIF a JPG');
     }
     
     // Normalizar nombre del tipo de foto
@@ -95,15 +87,7 @@ export const subirFotoAuditoria = async (
     const nombreArchivo = `auditoria_${idAuditoria}_${tipoFotoNormalizado}_${timestamp}.${extension}`;
     const rutaArchivo = `auditorias/${idAuditoria}/${nombreArchivo}`;
 
-    console.log('📝 Nombre de archivo generado para iOS:', {
-      original: archivo.name,
-      normalizado: nombreArchivo,
-      ruta: rutaArchivo
-    });
-
     // Subir archivo a Supabase Storage con configuración para iOS
-    console.log('📱 Iniciando subida a Supabase Storage...');
-    
     const { error: uploadError } = await supabase.storage
       .from('auditoria-fotos')
       .upload(rutaArchivo, archivo, {
@@ -175,8 +159,6 @@ export const subirFotoAuditoria = async (
       id_auditoria_foto: nextId
     };
     
-    console.log('Insertando con ID generado:', insertDataWithId);
-    
     const { data: fotoData, error: dbError } = await supabase
       .from('auditoria_fotos')
       .insert(insertDataWithId)
@@ -184,13 +166,7 @@ export const subirFotoAuditoria = async (
       .single();
 
     if (dbError) {
-      console.error('Error guardando en BD:', dbError);
-      console.error('Detalles del error:', {
-        message: dbError.message,
-        details: dbError.details,
-        hint: dbError.hint,
-        code: dbError.code
-      });
+      console.error('Error guardando en BD:', dbError.message);
       // Intentar eliminar el archivo subido si falló la BD
       await supabase.storage
         .from('auditoria-fotos')

@@ -102,12 +102,6 @@ const Auditoria = () => {
     if (!auditoriaActual) return;
 
     try {
-      console.log('💾 Guardando notas automáticamente:', {
-        notas_personal: notasPersonal,
-        notas_campanas: notasCampanas,
-        notas_conclusiones: conclusiones
-      });
-
       const { error } = await supabase
         .from('auditorias')
         .update({
@@ -119,7 +113,6 @@ const Auditoria = () => {
         .eq('id_auditoria', auditoriaActual.id_auditoria);
 
       if (error) throw error;
-      console.log('✅ Notas guardadas automáticamente');
     } catch (error) {
       console.error('❌ Error guardando notas:', error);
     }
@@ -166,8 +159,6 @@ const Auditoria = () => {
   // Tracking cuando se inicia una nueva auditoría (no modo revisión)
   useEffect(() => {
     if (auditoriaActual && !modoRevision && auditoriaActual.id_auditoria && respuestas) {
-      console.log('🚀 Nueva auditoría iniciada:', auditoriaActual.id_auditoria);
-      
       // Iniciar transacción de auditoría
       startTransaction('audit_completion');
       

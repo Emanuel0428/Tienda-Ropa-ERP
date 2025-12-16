@@ -57,8 +57,6 @@ const RotatingSchedules: React.FC = () => {
 
       if (error) throw error;
 
-      console.log('📋 Plantillas cargadas:', data);
-
       // Si no hay plantillas, crear las por defecto
       if (!data || data.length === 0) {
         await createDefaultTemplates();
@@ -153,19 +151,11 @@ const RotatingSchedules: React.FC = () => {
   };
 
   const updateTemplate = (templateId: number | undefined, field: string, value: any) => {
-    console.log('🔄 Actualizando:', { templateId, field, value });
-    setTemplates(prev => {
-      const updated = prev.map(t => 
+    setTemplates(prev => 
+      prev.map(t => 
         t.id === templateId ? { ...t, [field]: value } : t
-      );
-      console.log('📝 Templates después de actualizar:', updated.map(t => ({
-        id: t.id,
-        role: t.target_role,
-        week: t.week_number,
-        [field]: t[field as keyof RotatingTemplate]
-      })));
-      return updated;
-    });
+      )
+    );
   };
 
   useEffect(() => {
@@ -173,9 +163,7 @@ const RotatingSchedules: React.FC = () => {
   }, [loadTemplates]);
 
   const getTemplate = (role: 'administradora' | 'asesora', week: 1 | 2) => {
-    const template = templates.find(t => t.target_role === role && t.week_number === week);
-    console.log(`🔍 Buscando template: role=${role}, week=${week}, encontrado:`, template ? { id: template.id, name: template.template_name } : 'NO ENCONTRADO');
-    return template;
+    return templates.find(t => t.target_role === role && t.week_number === week);
   };
 
   return (
