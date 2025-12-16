@@ -141,14 +141,14 @@ function App() {
             <Route path="/goals" element={<Goals />} />
             <Route path="/inventory" element={<Inventory />} />
             <Route path="/stores" element={
-              <AdminRoute>
+              <CoordinadorRoute>
                 <Stores />
-              </AdminRoute>
+              </CoordinadorRoute>
             } />
             <Route path="/users" element={
-              <AdminRoute>
+              <CoordinadorRoute>
                 <Users />
-              </AdminRoute>
+              </CoordinadorRoute>
             } />
             <Route path="/statistics" element={
               <AdminRoute>

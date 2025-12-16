@@ -3,6 +3,8 @@ import { supabase } from '../supabaseClient';
 import { Modal } from '../components/ui/Modal';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
+import { Badge } from '../components/ui/Badge';
+import { Phone, MapPin, Calendar, Edit2, UserCircle } from 'lucide-react';
 
 interface User {
   id_usuario: number;
@@ -231,55 +233,84 @@ const Users = () => {
   }
 
   return (
-    <div className="py-6 px-6">
-      <div className="flex justify-between items-center mb-6 mt-6">
-        <h1 className="text-2xl font-bold">Usuarios</h1>
+    <div className="py-6 px-4 sm:px-6 max-w-7xl mx-auto">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6 pt-16 sm:pt-6">
+        <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Usuarios</h1>
         <Button 
           onClick={() => setIsCreateModalOpen(true)}
-          className="bg-blue-600 hover:bg-blue-700 text-white"
+          className="bg-blue-600 hover:bg-blue-700 text-white w-full sm:w-auto"
         >
           + Crear Nuevo Usuario
         </Button>
       </div>
       
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-6">
         {users.map(user => (
-          <Card key={user.id_usuario} className="p-4">
-            <div className="flex items-start space-x-4">
-              <div className="flex-shrink-0">
-                {user.avatar_url ? (
-                  <img
-                    src={user.avatar_url}
-                    alt={user.nombre}
-                    className="h-16 w-16 rounded-full object-cover"
-                  />
-                ) : (
-                  <div className="h-16 w-16 rounded-full bg-gray-200 flex items-center justify-center">
-                    <span className="text-2xl text-gray-500">
-                      {user.nombre.charAt(0).toUpperCase()}
-                    </span>
-                  </div>
-                )}
+          <Card key={user.id_usuario} className="overflow-hidden hover:shadow-xl transition-all duration-200 border border-gray-200">
+            {/* Header con avatar y rol */}
+            <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-4 border-b border-gray-200">
+              <div className="flex items-center gap-4">
+                <div className="flex-shrink-0">
+                  {user.avatar_url ? (
+                    <img
+                      src={user.avatar_url}
+                      alt={user.nombre}
+                      className="h-16 w-16 rounded-full object-cover ring-4 ring-white shadow-lg"
+                    />
+                  ) : (
+                    <div className="h-16 w-16 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center ring-4 ring-white shadow-lg">
+                      <UserCircle className="w-10 h-10 text-white" />
+                    </div>
+                  )}
+                </div>
+                
+                <div className="flex-1 min-w-0">
+                  <h3 className="text-lg font-bold text-gray-900 truncate">{user.nombre}</h3>
+                  <Badge 
+                    variant={user.rol === 'admin' ? 'success' : user.rol === 'coordinador' ? 'warning' : 'default'}
+                    className="mt-1 text-xs capitalize"
+                  >
+                    {user.rol}
+                  </Badge>
+                </div>
+              </div>
+            </div>
+
+            {/* Información de contacto */}
+            <div className="p-4 space-y-3">
+              <div className="flex items-center gap-2 text-sm text-gray-600">
+                <Phone className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                <span className="truncate">{user.celular}</span>
               </div>
               
-              <div className="flex-1">
-                <h3 className="text-lg font-semibold">{user.nombre}</h3>
-                <p className="text-sm text-gray-500">{user.rol}</p>
-                <p className="text-sm">{user.celular}</p>
-                {user.tienda && (
-                  <p className="text-sm text-gray-600">Tienda: {user.tienda.nombre}</p>
-                )}
-                <p className="text-sm text-gray-600">
-                  {new Date(user.fecha_nacimiento).toLocaleDateString()}
-                </p>
-              </div>
+              {user.tienda && (
+                <div className="flex items-center gap-2 text-sm text-gray-600">
+                  <MapPin className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                  <span className="truncate">{user.tienda.nombre}</span>
+                </div>
+              )}
               
-              <Button
+              <div className="flex items-center gap-2 text-sm text-gray-600">
+                <Calendar className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                <span>
+                  {new Date(user.fecha_nacimiento).toLocaleDateString('es-ES', { 
+                    day: 'numeric', 
+                    month: 'long', 
+                    year: 'numeric' 
+                  })}
+                </span>
+              </div>
+            </div>
+
+            {/* Footer con acciones */}
+            <div className="px-4 pb-4">
+              <button
                 onClick={() => handleEditUser(user)}
-                className="bg-primary-600 text-white px-3 py-1 rounded"
+                className="w-full bg-white border-2 border-blue-600 text-blue-600 hover:bg-blue-600 hover:text-white font-medium transition-all duration-200 flex items-center justify-center gap-2 py-2.5 rounded-lg"
               >
-                Editar
-              </Button>
+                <Edit2 className="w-4 h-4" />
+                <span>Editar</span>
+              </button>
             </div>
           </Card>
         ))}

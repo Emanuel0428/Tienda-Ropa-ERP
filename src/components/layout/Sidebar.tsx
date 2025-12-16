@@ -120,12 +120,10 @@ const Sidebar: React.FC<SidebarProps> = ({ user }) => {
         { id: 'contentsquare-test', label: '🧪 Test ContentSquare', icon: HelpCircle, path: '/contentsquare-test' }
       );
     } else if (user?.role === 'coordinador') {
-      // Coordinador ve solo elementos específicos (sin los adminOnlyItems)
+      // Coordinador ve solo elementos específicos (sin Dashboard ni Analíticas)
       return [
-        { id: 'dashboard', label: 'Dashboard', icon: Home, path: '/dashboard' },
         { id: 'stores', label: 'Tiendas', icon: Store, path: '/stores' },
         { id: 'users', label: 'Usuarios', icon: Users, path: '/users' },
-        { id: 'analytics', label: 'Analíticas', icon: TrendingUp, path: '/analytics' },
       ];
     }
 

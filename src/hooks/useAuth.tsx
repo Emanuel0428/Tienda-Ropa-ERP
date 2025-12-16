@@ -148,7 +148,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const signIn = async (email: string, password: string) => {
     try {
       setLoading(true);
-      console.log('🔐 Iniciando sesión...');
       
       const { data, error } = await supabase.auth.signInWithPassword({
         email: email,
@@ -156,12 +155,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
 
       if (error) {
-        console.error('❌ Error en login:', error);
-        throw error;
+        // Mensaje de error más amigable
+        if (error.message.includes('Invalid login credentials') || 
+            error.message.includes('Invalid') ||
+            error.message.includes('Email not confirmed')) {
+          throw new Error('Usuario o contraseña incorrectos');
+        }
+        throw new Error(error.message);
       }
 
       if (!data.user) {
-        throw new Error('No se pudo iniciar sesión');
+        throw new Error('Usuario o contraseña incorrectos');
       }
 
       // Cargar datos del usuario inmediatamente
