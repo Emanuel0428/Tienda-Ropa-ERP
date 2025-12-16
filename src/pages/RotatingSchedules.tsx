@@ -10,7 +10,7 @@ interface RotatingTemplate {
   template_name: string;
   is_rotating_template: boolean;
   week_number: 1 | 2;
-  target_role: 'admin' | 'asesora';
+  target_role: 'administradora' | 'asesora';
   monday_time: string | null;
   monday_is_off: boolean;
   tuesday_time: string | null;
@@ -50,12 +50,14 @@ const RotatingSchedules: React.FC = () => {
       const { data, error } = await supabase
         .from('schedule_templates')
         .select('*')
-        .is('id_tienda', null)
         .eq('is_rotating_template', true)
+        .is('id_tienda', null)
         .order('target_role')
         .order('week_number');
 
       if (error) throw error;
+
+      console.log('📋 Plantillas cargadas:', data);
 
       // Si no hay plantillas, crear las por defecto
       if (!data || data.length === 0) {
@@ -151,17 +153,29 @@ const RotatingSchedules: React.FC = () => {
   };
 
   const updateTemplate = (templateId: number | undefined, field: string, value: any) => {
-    setTemplates(prev => prev.map(t => 
-      t.id === templateId ? { ...t, [field]: value } : t
-    ));
+    console.log('🔄 Actualizando:', { templateId, field, value });
+    setTemplates(prev => {
+      const updated = prev.map(t => 
+        t.id === templateId ? { ...t, [field]: value } : t
+      );
+      console.log('📝 Templates después de actualizar:', updated.map(t => ({
+        id: t.id,
+        role: t.target_role,
+        week: t.week_number,
+        [field]: t[field as keyof RotatingTemplate]
+      })));
+      return updated;
+    });
   };
 
   useEffect(() => {
     loadTemplates();
   }, [loadTemplates]);
 
-  const getTemplate = (role: 'admin' | 'asesora', week: 1 | 2) => {
-    return templates.find(t => t.target_role === role && t.week_number === week);
+  const getTemplate = (role: 'administradora' | 'asesora', week: 1 | 2) => {
+    const template = templates.find(t => t.target_role === role && t.week_number === week);
+    console.log(`🔍 Buscando template: role=${role}, week=${week}, encontrado:`, template ? { id: template.id, name: template.template_name } : 'NO ENCONTRADO');
+    return template;
   };
 
   return (
@@ -232,33 +246,36 @@ const RotatingSchedules: React.FC = () => {
                   <h3 className="font-medium text-primary-600 dark:text-primary-400 border-b pb-2">
                     Semana 1 (Semanas impares: 1, 3, 5)
                   </h3>
-                  {daysOfWeek.map(day => {
-                    const template = getTemplate('admin', 1);
-                    if (!template) return null;
-                    const timeKey = `${day.key}_time` as keyof RotatingTemplate;
-                    const offKey = `${day.key}_is_off` as keyof RotatingTemplate;
-                    return (
-                      <div key={day.key} className="flex items-center gap-3">
-                        <label className="w-24 text-sm text-gray-700 dark:text-gray-300">
-                          {day.label}
-                        </label>
-                        <input
-                          type="checkbox"
-                          checked={template[offKey] as boolean}
-                          onChange={(e) => updateTemplate(template.id, offKey, e.target.checked)}
-                          className="rounded border-gray-300 dark:border-gray-600"
-                        />
-                        <span className="text-xs text-gray-500 w-16">Día libre</span>
-                        <input
-                          type="time"
-                          value={(template[timeKey] as string) || ''}
-                          onChange={(e) => updateTemplate(template.id, timeKey, e.target.value || null)}
-                          disabled={template[offKey] as boolean}
-                          className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg disabled:bg-gray-100 dark:disabled:bg-gray-700 dark:bg-gray-700 dark:text-white"
-                        />
-                      </div>
-                    );
-                  })}
+                  {(() => {
+                    const template = getTemplate('administradora', 1);
+                    if (!template) return <p className="text-red-500">No se encontró plantilla</p>;
+                    
+                    return daysOfWeek.map(day => {
+                      const timeKey = `${day.key}_time` as keyof RotatingTemplate;
+                      const offKey = `${day.key}_is_off` as keyof RotatingTemplate;
+                      return (
+                        <div key={day.key} className="flex items-center gap-3">
+                          <label className="w-24 text-sm text-gray-700 dark:text-gray-300">
+                            {day.label}
+                          </label>
+                          <input
+                            type="checkbox"
+                            checked={template[offKey] as boolean}
+                            onChange={(e) => updateTemplate(template.id, offKey, e.target.checked)}
+                            className="rounded border-gray-300 dark:border-gray-600"
+                          />
+                          <span className="text-xs text-gray-500 w-16">Día libre</span>
+                          <input
+                            type="time"
+                            value={(template[timeKey] as string) || ''}
+                            onChange={(e) => updateTemplate(template.id, timeKey, e.target.value || null)}
+                            disabled={template[offKey] as boolean}
+                            className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg disabled:bg-gray-100 dark:disabled:bg-gray-700 dark:bg-gray-700 dark:text-white"
+                          />
+                        </div>
+                      );
+                    });
+                  })()}
                 </div>
 
                 {/* Admin Semana 2 */}
@@ -266,9 +283,11 @@ const RotatingSchedules: React.FC = () => {
                   <h3 className="font-medium text-primary-600 dark:text-primary-400 border-b pb-2">
                     Semana 2 (Semanas pares: 2, 4)
                   </h3>
-                  {daysOfWeek.map(day => {
-                    const template = getTemplate('admin', 2);
-                    if (!template) return null;
+                  {(() => {
+                    const template = getTemplate('administradora', 2);
+                    if (!template) return <p className="text-red-500">No se encontró plantilla</p>;
+                    
+                    return daysOfWeek.map(day => {
                     const timeKey = `${day.key}_time` as keyof RotatingTemplate;
                     const offKey = `${day.key}_is_off` as keyof RotatingTemplate;
                     return (
@@ -291,8 +310,9 @@ const RotatingSchedules: React.FC = () => {
                           className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg disabled:bg-gray-100 dark:disabled:bg-gray-700 dark:bg-gray-700 dark:text-white"
                         />
                       </div>
-                    );
-                  })}
+                      );
+                    });
+                  })()}
                 </div>
               </div>
             </div>
@@ -310,9 +330,11 @@ const RotatingSchedules: React.FC = () => {
                   <h3 className="font-medium text-primary-600 dark:text-primary-400 border-b pb-2">
                     Semana 1 (Semanas impares: 1, 3, 5)
                   </h3>
-                  {daysOfWeek.map(day => {
+                  {(() => {
                     const template = getTemplate('asesora', 1);
-                    if (!template) return null;
+                    if (!template) return <p className="text-red-500">No se encontró plantilla</p>;
+                    
+                    return daysOfWeek.map(day => {
                     const timeKey = `${day.key}_time` as keyof RotatingTemplate;
                     const offKey = `${day.key}_is_off` as keyof RotatingTemplate;
                     return (
@@ -335,8 +357,9 @@ const RotatingSchedules: React.FC = () => {
                           className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg disabled:bg-gray-100 dark:disabled:bg-gray-700 dark:bg-gray-700 dark:text-white"
                         />
                       </div>
-                    );
-                  })}
+                      );
+                    });
+                  })()}
                 </div>
 
                 {/* Asesora Semana 2 */}
@@ -344,9 +367,11 @@ const RotatingSchedules: React.FC = () => {
                   <h3 className="font-medium text-primary-600 dark:text-primary-400 border-b pb-2">
                     Semana 2 (Semanas pares: 2, 4)
                   </h3>
-                  {daysOfWeek.map(day => {
+                  {(() => {
                     const template = getTemplate('asesora', 2);
-                    if (!template) return null;
+                    if (!template) return <p className="text-red-500">No se encontró plantilla</p>;
+                    
+                    return daysOfWeek.map(day => {
                     const timeKey = `${day.key}_time` as keyof RotatingTemplate;
                     const offKey = `${day.key}_is_off` as keyof RotatingTemplate;
                     return (
@@ -369,8 +394,9 @@ const RotatingSchedules: React.FC = () => {
                           className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg disabled:bg-gray-100 dark:disabled:bg-gray-700 dark:bg-gray-700 dark:text-white"
                         />
                       </div>
-                    );
-                  })}
+                      );
+                    });
+                  })()}
                 </div>
               </div>
             </div>

@@ -22,6 +22,7 @@ import Attendance from './pages/Attendance';
 import AttendanceMonitor from './pages/AttendanceMonitor';
 import AttendanceSettings from './pages/AttendanceSettings';
 import RotatingSchedules from './pages/RotatingSchedules';
+import MySchedule from './pages/MySchedule';
 import Auth from './pages/Auth';
 import Profile from './pages/Profile';
 import Settings from './pages/Settings';
@@ -118,6 +119,7 @@ function App() {
             <Route path="/drive-config" element={<DriveConfig />} />
             <Route path="/camera-capture" element={<CameraCapture />} />
             <Route path="/attendance" element={<Attendance />} />
+            <Route path="/my-schedule" element={<MySchedule />} />
             <Route path="/attendance-monitor" element={
               <CoordinadorRoute>
                 <AttendanceMonitor />

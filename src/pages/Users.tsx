@@ -8,7 +8,7 @@ interface User {
   id_usuario: number;
   id: string;
   nombre: string;
-  rol: 'admin' | 'coordinador' | 'asesora' | 'auditor' | 'gerencia';
+  rol: 'admin' | 'coordinador' | 'administradora' | 'asesora' | 'auditor' | 'gerencia';
   celular: string;
   fecha_nacimiento: string;
   id_tienda: number | null;
@@ -34,7 +34,7 @@ const Users = () => {
   const [tiendas, setTiendas] = useState<{ id_tienda: number; nombre: string; }[]>([]);
   const [newUser, setNewUser] = useState({
     nombre: '',
-    rol: 'asesora' as 'admin' | 'coordinador' | 'asesora' | 'auditor' | 'gerencia',
+    rol: 'asesora' as 'admin' | 'coordinador' | 'administradora' | 'asesora' | 'auditor' | 'gerencia',
     celular: '',
     fecha_nacimiento: '',
     id_tienda: '',
@@ -314,6 +314,7 @@ const Users = () => {
               >
                 <option value="admin">Admin</option>
                 <option value="coordinador">Coordinador</option>
+                <option value="administradora">Administradora</option>
                 <option value="asesora">Asesora</option>
                 <option value="auditor">Auditor</option>
               </select>
@@ -455,6 +456,7 @@ const Users = () => {
                 >
                   <option value="asesora">Asesora</option>
                   <option value="coordinador">Coordinador</option>
+                  <option value="administradora">Administradora</option>
                   <option value="auditor">Auditor</option>
                   <option value="gerencia">Gerencia</option>
                   <option value="admin">Administrador</option>

@@ -161,6 +161,13 @@ const Sidebar: React.FC<SidebarProps> = ({ user }) => {
       { id: 'mi-asistencia', label: 'Mi Asistencia', icon: Clock, path: '/attendance' }
     ];
 
+    // Administradoras y Asesoras ven su horario
+    if (user?.role === 'administradora' || user?.role === 'asesora') {
+      options.push(
+        { id: 'mi-horario', label: 'Mi Horario', icon: BarChart, path: '/my-schedule' }
+      );
+    }
+
     // Coordinador y Admin ven opciones adicionales
     if (user?.role === 'coordinador' || user?.role === 'admin') {
       options.push(
