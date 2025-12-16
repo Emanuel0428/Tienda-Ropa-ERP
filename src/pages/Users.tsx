@@ -108,32 +108,27 @@ const Users = () => {
     setIsEditModalOpen(true);
   };
 
-  const handleUpdateUser = async (id_usuario: number, userData: EditUserForm) => {
+  const handleUpdateUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!selectedUser) return;
+    
     try {
-      // Verificar la sesión actual antes de hacer la actualización
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-      
-      if (sessionError) {
-        throw new Error('Error de sesión: Por favor, inicia sesión nuevamente');
-      }
-
-      if (!session) {
-        throw new Error('No hay sesión activa');
-      }
+      setLoading(true);
+      setError(null);
 
       const { error } = await supabase
         .from('usuarios')
         .update({
-          nombre: userData.nombre,
-          rol: userData.rol,
-          celular: userData.celular,
-          fecha_nacimiento: userData.fecha_nacimiento,
-          id_tienda: userData.id_tienda,
+          nombre: selectedUser.nombre,
+          rol: selectedUser.rol,
+          celular: selectedUser.celular,
+          fecha_nacimiento: selectedUser.fecha_nacimiento,
+          id_tienda: selectedUser.id_tienda,
         })
-        .eq('id_usuario', id_usuario);
+        .eq('id_usuario', selectedUser.id_usuario);
 
       if (error) {
-        console.error('Error actualizando usuario:', error);
         throw error;
       }
 
@@ -144,6 +139,8 @@ const Users = () => {
     } catch (error) {
       console.error('Error en actualización:', error);
       setError((error as Error).message);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -322,10 +319,11 @@ const Users = () => {
           onClose={() => {
             setIsEditModalOpen(false);
             setSelectedUser(null);
+            setError(null);
           }}
           title="Editar Usuario"
         >
-          <form className="space-y-4">
+          <form onSubmit={handleUpdateUser} className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-gray-700">Nombre</label>
               <input
@@ -389,19 +387,22 @@ const Users = () => {
 
             <div className="flex justify-end space-x-3 mt-6">
               <Button
+                type="button"
                 onClick={() => {
                   setIsEditModalOpen(false);
                   setSelectedUser(null);
+                  setError(null);
                 }}
                 className="bg-gray-200 text-gray-800"
               >
                 Cancelar
               </Button>
               <Button
-                onClick={() => selectedUser && handleUpdateUser(selectedUser.id_usuario, selectedUser)}
-                className="bg-primary-600 text-white"
+                type="submit"
+                disabled={loading}
+                className="bg-primary-600 text-white disabled:opacity-50"
               >
-                Guardar cambios
+                {loading ? 'Guardando...' : 'Guardar cambios'}
               </Button>
             </div>
           </form>
