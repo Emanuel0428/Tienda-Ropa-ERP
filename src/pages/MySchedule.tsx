@@ -40,9 +40,11 @@ const MySchedule: React.FC = () => {
   };
 
   const getMonday = (date: Date): Date => {
-    const day = date.getDay();
-    const diff = date.getDate() - day + (day === 0 ? -6 : 1);
-    return new Date(date.setDate(diff));
+    const d = new Date(date); // Crear nueva instancia para no modificar el original
+    const day = d.getDay();
+    const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+    d.setDate(diff);
+    return d;
   };
 
   const loadUserSchedule = async () => {
@@ -139,7 +141,9 @@ const MySchedule: React.FC = () => {
 
   const getTodayIndex = (): number => {
     const today = new Date().getDay();
-    return today;
+    // Convertir día de semana (0=domingo, 1=lunes...) a índice del array (0=lunes, 1=martes...)
+    // Si es domingo (0), debe ser índice 6. Si es lunes (1), debe ser índice 0.
+    return today === 0 ? 6 : today - 1;
   };
 
   if (loading) {
