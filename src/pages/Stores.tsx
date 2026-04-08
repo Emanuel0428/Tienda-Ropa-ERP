@@ -3,13 +3,14 @@ import { supabase } from '../supabaseClient';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Modal } from '../components/ui/Modal';
-import { Edit2, Trash2 } from 'lucide-react';
+import { Edit2, Trash2, Phone } from 'lucide-react';
 
 interface Store {
   id_tienda: number;
   nombre: string;
   direccion: string;
   ciudad: string;
+  telefono: string | null;
   id_admin: number | null;
   id_asesora: number | null;
   created_at: string;
@@ -24,10 +25,12 @@ const Stores: React.FC = () => {
   const [storeToDelete, setStoreToDelete] = useState<Store | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     nombre: '',
     direccion: '',
     ciudad: '',
+    telefono: '',
     meta_mensual: 0
   });
 
@@ -85,37 +88,25 @@ const Stores: React.FC = () => {
           .update(storeData)
           .eq('id_tienda', editingStore.id_tienda);
 
-        if (updateError) {
-          console.error('Error de actualización:', updateError);
-          throw new Error('Error al actualizar la tienda. Por favor intenta de nuevo.');
-        }
-        setError('Tienda actualizada exitosamente');
+        if (updateError) throw new Error('Error al actualizar la tienda. Por favor intenta de nuevo.');
+        setSuccessMessage('Tienda actualizada exitosamente');
       } else {
         // Crear nueva tienda
         const { error: insertError } = await supabase
           .from('tiendas')
           .insert([storeData]);
 
-        if (insertError) {
-          console.error('Error de inserción:', insertError);
-          throw new Error('Error al crear la tienda. Por favor intenta de nuevo.');
-        }
-        setError('Tienda creada exitosamente');
+        if (insertError) throw new Error('Error al crear la tienda. Por favor intenta de nuevo.');
+        setSuccessMessage('Tienda creada exitosamente');
       }
 
       // Si la operación fue exitosa, actualizamos la UI
       await fetchStores();
       setIsModalOpen(false);
       setEditingStore(null);
-      setFormData({
-        nombre: '',
-        direccion: '',
-        ciudad: '',
-        meta_mensual: 0
-      });
-      setTimeout(() => setError(null), 3000);
+      setFormData({ nombre: '', direccion: '', ciudad: '', telefono: '', meta_mensual: 0 });
+      setTimeout(() => setSuccessMessage(null), 3000);
     } catch (err: any) {
-      console.error('Error procesando tienda:', err);
       setError(err.message);
     } finally {
       setLoading(false);
@@ -129,6 +120,7 @@ const Stores: React.FC = () => {
       nombre: store.nombre,
       direccion: store.direccion,
       ciudad: store.ciudad,
+      telefono: store.telefono || '',
       meta_mensual: store.meta_mensual
     });
     setIsModalOpen(true);
@@ -164,11 +156,11 @@ const Stores: React.FC = () => {
         throw deleteError;
       }
 
-      setError('Tienda eliminada exitosamente');
+      setSuccessMessage('Tienda eliminada exitosamente');
       await fetchStores();
       setIsDeleteModalOpen(false);
       setStoreToDelete(null);
-      setTimeout(() => setError(null), 3000);
+      setTimeout(() => setSuccessMessage(null), 3000);
     } catch (err: any) {
       console.error('Error eliminando tienda:', err);
       setError(err.message || 'Error al eliminar la tienda');
@@ -185,19 +177,20 @@ const Stores: React.FC = () => {
         <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-200">Tiendas</h1>
         <Button onClick={() => {
           setEditingStore(null);
-          setFormData({ nombre: '', direccion: '', ciudad: '', meta_mensual: 0 });
+          setFormData({ nombre: '', direccion: '', ciudad: '', telefono: '', meta_mensual: 0 });
           setIsModalOpen(true);
         }}>
           Crear Nueva Tienda
         </Button>
       </div>
 
+      {successMessage && (
+        <div className="mb-4 p-4 border rounded-md bg-green-50 border-green-200 text-green-600">
+          {successMessage}
+        </div>
+      )}
       {error && (
-        <div className={`mb-4 p-4 border rounded-md ${
-          error === 'Tienda creada exitosamente' 
-            ? 'bg-green-50 border-green-200 text-green-600'
-            : 'bg-red-50 border-red-200 text-red-600'
-        }`}>
+        <div className="mb-4 p-4 border rounded-md bg-red-50 border-red-200 text-red-600">
           {error}
         </div>
       )}
@@ -227,6 +220,12 @@ const Stores: React.FC = () => {
             <div className="space-y-2 text-sm text-gray-600 dark:text-gray-400">
               <p><span className="font-medium">Dirección:</span> {store.direccion}</p>
               <p><span className="font-medium">Ciudad:</span> {store.ciudad}</p>
+              {store.telefono && (
+                <p className="flex items-center gap-1">
+                  <Phone size={14} className="text-gray-400" />
+                  <span>{store.telefono}</span>
+                </p>
+              )}
               <p><span className="font-medium">Meta Mensual:</span> ${store.meta_mensual?.toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) ?? '0,00'}</p>
             </div>
           </Card>
@@ -238,7 +237,7 @@ const Stores: React.FC = () => {
         onClose={() => {
           setIsModalOpen(false);
           setEditingStore(null);
-          setFormData({ nombre: '', direccion: '', ciudad: '', meta_mensual: 0 });
+          setFormData({ nombre: '', direccion: '', ciudad: '', telefono: '', meta_mensual: 0 });
         }}
         title={editingStore ? 'Editar Tienda' : 'Crear Nueva Tienda'}
       >
@@ -287,6 +286,20 @@ const Stores: React.FC = () => {
 
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              Teléfono / Celular de la tienda
+            </label>
+            <input
+              type="tel"
+              name="telefono"
+              value={formData.telefono}
+              onChange={handleInputChange}
+              placeholder="Ej: 3001234567"
+              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 rounded-md focus:outline-none focus:ring-1 focus:ring-primary-500"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               Meta Mensual
             </label>
             <input
@@ -306,7 +319,7 @@ const Stores: React.FC = () => {
               onClick={() => {
                 setIsModalOpen(false);
                 setEditingStore(null);
-                setFormData({ nombre: '', direccion: '', ciudad: '', meta_mensual: 0 });
+                setFormData({ nombre: '', direccion: '', ciudad: '', telefono: '', meta_mensual: 0 });
               }}
               type="button"
             >

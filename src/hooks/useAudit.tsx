@@ -116,7 +116,6 @@ export const useAudit = () => {
 
       setCategorias(categoriasOrganizadas);
       
-      console.log('✅ Catálogo cargado:', preguntasBase?.length, 'preguntas');
 
     } catch (error) {
       console.error('❌ Error cargando estructura del catálogo:', error);
@@ -127,11 +126,9 @@ export const useAudit = () => {
   };
 
   // Cargar estructura de auditoría existente (desde auditoria_preguntas)
+  // No maneja isLoading por sí sola — lo controla quien la llama
   const cargarEstructuraAuditoriaExistente = async (idAuditoria: number) => {
     try {
-      setIsLoading(true);
-      setError(null);
-
       // Cargar categorías y subcategorías
       const { data: categoriasData } = await supabase
         .from('categorias')
@@ -190,14 +187,10 @@ export const useAudit = () => {
 
       setCategorias(categoriasOrganizadas);
       setRespuestas(respuestasMap);
-      
-      console.log('✅ Auditoría cargada:', preguntasAuditoriaData?.length, 'preguntas');
 
     } catch (error) {
       console.error('❌ Error cargando estructura de auditoría existente:', error);
-      setError('Error al cargar la estructura de auditoría');
-    } finally {
-      setIsLoading(false);
+      throw error; // Propaga el error al llamador para que maneje isLoading
     }
   };
 
@@ -264,7 +257,6 @@ export const useAudit = () => {
 
       if (insertError) throw insertError;
 
-      console.log('✅ Auditoría creada:', auditoriaData.id_auditoria, '-', preguntasAuditoriaData.length, 'preguntas');
 
       // 4. Actualizar estados y cargar estructura final
       setModoRevision(false);
@@ -420,13 +412,6 @@ export const useAudit = () => {
 
       const resumen = calcularResumen();
       
-      console.log('📝 Guardando notas de auditoría:', {
-        notas_personal: notasPersonal,
-        notas_campanas: notasCampanas,
-        notas_conclusiones: conclusiones,
-        observaciones: observacionesFinales
-      });
-      
       const { error } = await supabase
         .from('auditorias')
         .update({
@@ -442,7 +427,6 @@ export const useAudit = () => {
 
       if (error) throw error;
 
-      console.log('✅ Auditoría finalizada con todas las notas:', resumen.calificacion_total_ponderada + '%');
       
       setShowSuccessMessage(true);
       setTimeout(() => setShowSuccessMessage(false), 3000);
@@ -488,7 +472,6 @@ export const useAudit = () => {
       setModoRevision(true); // Activar modo revisión
       setAuditoriaActual(auditoriaData);
 
-      console.log('✅ Auditoría cargada:', id_auditoria);
 
       return true;
 
@@ -543,7 +526,6 @@ export const useAudit = () => {
 
       if (error) throw error;
 
-      console.log('✅ Pregunta agregada');
       await cargarEstructuraCatalogo(); // Recargar estructura
       
       return data;
@@ -568,7 +550,6 @@ export const useAudit = () => {
 
       if (error) throw error;
 
-      console.log('✅ Pregunta editada');
       await cargarEstructuraCatalogo(); // Recargar estructura
       
       return true;
@@ -589,7 +570,6 @@ export const useAudit = () => {
 
       if (error) throw error;
 
-      console.log('✅ Pregunta desactivada');
       await cargarEstructuraCatalogo(); // Recargar estructura
       
       return true;
@@ -751,7 +731,6 @@ export const useAudit = () => {
 
       if (errorPreguntas) throw errorPreguntas;
 
-      console.log(`� ${preguntasCreadas.length} preguntas copiadas sin respuestas`);
 
       // 6. Actualizar estados locales
       setModoRevision(false);
@@ -763,7 +742,6 @@ export const useAudit = () => {
       setModoRevision(false); // Mantener en modo creación
 
       setCurrentStep(2);
-      console.log('✅ Plantilla aplicada:', nuevaAuditoria.id_auditoria, '-', preguntasCreadas.length, 'preguntas');
       return true;
 
     } catch (error) {
@@ -838,7 +816,6 @@ export const useAudit = () => {
 
       if (errorAuditoriaPregunta) throw errorAuditoriaPregunta;
 
-      console.log('✅ Pregunta agregada');
 
       // Recargar auditoría actual sin cambiar modo revisión
       await recargarAuditoriaActual(idAuditoria);
@@ -891,7 +868,6 @@ export const useAudit = () => {
 
       if (errorAuditoriaPregunta) throw errorAuditoriaPregunta;
 
-      console.log('✅ Pregunta eliminada');
 
       // Recargar auditoría actual sin cambiar modo revisión
       await recargarAuditoriaActual(idAuditoria);

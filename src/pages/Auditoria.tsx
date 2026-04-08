@@ -6,7 +6,6 @@ import { Card } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
 import { useAudit } from '../hooks/useAudit';
 import { useAuth } from '../hooks/useAuth';
-import { useContentSquare } from '../hooks/useContentSquare';
 import { supabase } from '../supabaseClient';
 import type { Auditoria, Respuesta } from '../types/audit';
 import GestorFotos from '../components/GestorFotos';
@@ -71,8 +70,6 @@ const Auditoria = () => {
     recargarAuditoriaActual
   } = useAudit();
 
-  // Hook de ContentSquare para tracking
-  const { trackAuditEvent, startTransaction, endTransaction, tagSession } = useContentSquare();
 
   const [showResumenModal, setShowResumenModal] = useState(false);
   const [auditoriasAnteriores, setAuditoriasAnteriores] = useState<Auditoria[]>([]);
@@ -137,42 +134,12 @@ const Auditoria = () => {
   // Cargar notas específicas cuando se carga una auditoría existente
   useEffect(() => {
     if (auditoriaActual && modoRevision) {
-      console.log('📝 Cargando notas de auditoría existente:', {
-        notas_personal: auditoriaActual.notas_personal,
-        notas_campanas: auditoriaActual.notas_campanas,
-        notas_conclusiones: auditoriaActual.notas_conclusiones
-      });
-
-      // � Tracking: Revisión de auditoría iniciada
-      trackAuditEvent('review_started', {
-        auditId: auditoriaActual.id_auditoria,
-        storeId: auditoriaActual.id_tienda,
-        score: auditoriaActual.calificacion_total || 0
-      });
-
       setNotasPersonal(auditoriaActual.notas_personal || '');
       setNotasCampanas(auditoriaActual.notas_campanas || '');
       setConclusiones(auditoriaActual.notas_conclusiones || '');
     }
-  }, [auditoriaActual, modoRevision, trackAuditEvent]);
+  }, [auditoriaActual, modoRevision]);
 
-  // Tracking cuando se inicia una nueva auditoría (no modo revisión)
-  useEffect(() => {
-    if (auditoriaActual && !modoRevision && auditoriaActual.id_auditoria && respuestas) {
-      // Iniciar transacción de auditoría
-      startTransaction('audit_completion');
-      
-      // Tracking de inicio de auditoría
-      trackAuditEvent('started', {
-        auditId: auditoriaActual.id_auditoria,
-        storeId: auditoriaActual.id_tienda,
-        questionsCount: respuestas?.size || 0
-      });
-      
-      // Etiquetar sesión como auditor activo
-      tagSession(['audit_session', 'active_auditor']);
-    }
-  }, [auditoriaActual, modoRevision, startTransaction, trackAuditEvent, tagSession, respuestas]);
 
   // Guardar notas automáticamente cuando cambien (con debounce)
   useEffect(() => {
@@ -187,17 +154,16 @@ const Auditoria = () => {
     }, 2000); // Esperar 2 segundos después del último cambio
 
     return () => clearTimeout(timeoutId);
-  }, [notasPersonal, notasCampanas, conclusiones, auditoriaActual, isLoading]);
+  }, [notasPersonal, notasCampanas, conclusiones, auditoriaActual?.id_auditoria, isLoading]);
 
   // Manejar parámetros URL para cargar auditoría específica
   useEffect(() => {
     const auditoriaId = searchParams.get('id');
     const modo = searchParams.get('modo');
     const step = searchParams.get('step');
-    
+
     if (auditoriaId) {
       const id = parseInt(auditoriaId);
-      console.log('🔍 Cargando auditoría desde historial:', id, 'modo:', modo, 'step:', step);
       
       // Manejar diferentes modos
       if (modo === 'revision') {
@@ -228,7 +194,8 @@ const Auditoria = () => {
         cargarAuditoriaExistente(id);
       }
     }
-  }, [searchParams.get('id'), searchParams.get('modo'), searchParams.get('step')]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   const cargarTiendasDisponibles = async () => {
     setCargandoTiendas(true);
@@ -260,7 +227,7 @@ const Auditoria = () => {
         .from('usuarios')
         .select('id_usuario, nombre, rol')
         .eq('id_tienda', tienda.id_tienda)
-        .in('rol', ['admin', 'asesora']); // Solo admin y asesoras
+        .in('rol', ['admin', 'coordinador', 'administradora', 'asesora', 'auditor', 'gerencia']);
 
       if (usuariosError) {
         console.error('Error cargando usuarios:', usuariosError);
@@ -892,19 +859,7 @@ const Auditoria = () => {
       if (exito && auditoriaActual) {
         console.log('🎉 Auditoría finalizada exitosamente');
         
-        // � Tracking: Auditoría completada
-        endTransaction('audit_completion');
-        trackAuditEvent('completed', {
-          auditId: auditoriaActual.id_auditoria,
-          storeId: auditoriaActual.id_tienda,
-          score: auditoriaActual.calificacion_total || 0,
-          questionsCount: respuestas.size
-        });
-        
-        // Etiquetar sesión como auditor productivo
-        tagSession(['audit_completion', 'productive_session']);
-        
-        // �🚀 NUEVA LÍNEA: Notificar a n8n
+        // Notificar a n8n
         await notificarAuditoriaCompletada(auditoriaActual);
         
         console.log('🎉 Redirección a estadísticas en 2 segundos...');

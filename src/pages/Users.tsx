@@ -4,7 +4,7 @@ import { Modal } from '../components/ui/Modal';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
-import { Phone, MapPin, Calendar, Edit2, UserCircle } from 'lucide-react';
+import { Phone, MapPin, Calendar, Edit2, UserCircle, Trash2 } from 'lucide-react';
 
 interface User {
   id_usuario: number;
@@ -32,7 +32,11 @@ const Users = () => {
   const [error, setError] = useState<string | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<EditUserForm | null>(null);
+  const [userToDelete, setUserToDelete] = useState<User | null>(null);
+  const [isCreating, setIsCreating] = useState(false);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [tiendas, setTiendas] = useState<{ id_tienda: number; nombre: string; }[]>([]);
   const [newUser, setNewUser] = useState({
     nombre: '',
@@ -146,36 +150,43 @@ const Users = () => {
 
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
-    try {
-      setError(null);
+    setIsCreating(true);
+    setError(null);
 
-      // Validaciones
+    try {
       if (!newUser.email || !newUser.password || !newUser.nombre || !newUser.rol) {
         throw new Error('Todos los campos marcados son requeridos');
       }
+
+      // Guardar la sesión del admin antes de crear el usuario
+      // (signUp cambia la sesión activa automáticamente en Supabase)
+      const { data: { session: adminSession } } = await supabase.auth.getSession();
 
       // 1. Crear usuario en Supabase Auth
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: newUser.email,
         password: newUser.password,
         options: {
-          data: {
-            full_name: newUser.nombre,
-            role: newUser.rol
-          }
+          data: { full_name: newUser.nombre, role: newUser.rol }
         }
       });
 
+      // Restaurar sesión del admin inmediatamente para no perder el contexto
+      if (adminSession) {
+        await supabase.auth.setSession({
+          access_token: adminSession.access_token,
+          refresh_token: adminSession.refresh_token
+        });
+      }
+
       if (authError) throw authError;
       if (!authData.user) throw new Error('Error al crear usuario en autenticación');
-
-      console.log('✅ Usuario creado en Auth:', authData.user.id);
 
       // 2. Crear registro en tabla usuarios
       const { error: dbError } = await supabase
         .from('usuarios')
         .insert({
-          id: authData.user.id, // UUID del usuario de auth
+          id: authData.user.id,
           nombre: newUser.nombre,
           rol: newUser.rol,
           celular: newUser.celular || null,
@@ -183,33 +194,46 @@ const Users = () => {
           id_tienda: newUser.id_tienda ? parseInt(newUser.id_tienda) : null,
         });
 
-      if (dbError) {
-        console.error('Error insertando en tabla usuarios:', dbError);
-        throw dbError;
-      }
-
-      console.log('✅ Usuario creado en base de datos');
+      if (dbError) throw dbError;
 
       // 3. Limpiar formulario y cerrar modal
-      setNewUser({
-        nombre: '',
-        rol: 'asesora',
-        celular: '',
-        fecha_nacimiento: '',
-        id_tienda: '',
-        email: '',
-        password: ''
-      });
+      setNewUser({ nombre: '', rol: 'asesora', celular: '', fecha_nacimiento: '', id_tienda: '', email: '', password: '' });
       setIsCreateModalOpen(false);
-      
-      // 4. Recargar lista de usuarios
+
+      // 4. Recargar lista y mostrar éxito
       await fetchUsers();
-      
-      alert('Usuario creado exitosamente');
+      setSuccessMessage('Usuario creado exitosamente');
+      setTimeout(() => setSuccessMessage(null), 3000);
 
     } catch (error) {
-      console.error('Error creando usuario:', error);
       setError((error as Error).message);
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
+  const handleDeleteUser = async () => {
+    if (!userToDelete) return;
+
+    try {
+      setLoading(true);
+      setError(null);
+
+      // Llama a la función SQL que elimina de usuarios Y de auth.users en un solo paso
+      const { error: rpcError } = await supabase.rpc('delete_user_completely', {
+        p_id_usuario: userToDelete.id_usuario
+      });
+
+      if (rpcError) throw rpcError;
+
+      await fetchUsers();
+      setIsDeleteModalOpen(false);
+      setUserToDelete(null);
+    } catch (error) {
+      console.error('Error eliminando usuario:', error);
+      setError((error as Error).message);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -221,26 +245,28 @@ const Users = () => {
     }));
   };
 
-  if (loading) {
+  if (loading && users.length === 0) {
     return <div className="flex justify-center items-center h-screen">Cargando usuarios...</div>;
-  }
-
-  if (error) {
-    return <div className="text-red-500 text-center">{error}</div>;
   }
 
   return (
     <div className="py-6 px-4 sm:px-6 max-w-7xl mx-auto">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6 pt-16 sm:pt-6">
         <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Usuarios</h1>
-        <Button 
+        <Button
           onClick={() => setIsCreateModalOpen(true)}
           className="bg-blue-600 hover:bg-blue-700 text-white w-full sm:w-auto"
         >
           + Crear Nuevo Usuario
         </Button>
       </div>
-      
+
+      {successMessage && (
+        <div className="mb-4 p-4 border rounded-md bg-green-50 border-green-200 text-green-700">
+          {successMessage}
+        </div>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-6">
         {users.map(user => (
           <Card key={user.id_usuario} className="overflow-hidden hover:shadow-xl transition-all duration-200 border border-gray-200">
@@ -300,13 +326,20 @@ const Users = () => {
             </div>
 
             {/* Footer con acciones */}
-            <div className="px-4 pb-4">
+            <div className="px-4 pb-4 flex gap-2">
               <button
                 onClick={() => handleEditUser(user)}
-                className="w-full bg-white border-2 border-blue-600 text-blue-600 hover:bg-blue-600 hover:text-white font-medium transition-all duration-200 flex items-center justify-center gap-2 py-2.5 rounded-lg"
+                className="flex-1 bg-white border-2 border-blue-600 text-blue-600 hover:bg-blue-600 hover:text-white font-medium transition-all duration-200 flex items-center justify-center gap-2 py-2.5 rounded-lg"
               >
                 <Edit2 className="w-4 h-4" />
                 <span>Editar</span>
+              </button>
+              <button
+                onClick={() => { setUserToDelete(user); setIsDeleteModalOpen(true); }}
+                className="bg-white border-2 border-red-500 text-red-500 hover:bg-red-500 hover:text-white font-medium transition-all duration-200 flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg"
+                title="Eliminar usuario"
+              >
+                <Trash2 className="w-4 h-4" />
               </button>
             </div>
           </Card>
@@ -406,6 +439,44 @@ const Users = () => {
               </Button>
             </div>
           </form>
+        </Modal>
+      )}
+
+      {/* Modal de confirmación de eliminación */}
+      {isDeleteModalOpen && userToDelete && (
+        <Modal
+          isOpen={isDeleteModalOpen}
+          onClose={() => { setIsDeleteModalOpen(false); setUserToDelete(null); }}
+          title="Eliminar Usuario"
+        >
+          <div className="space-y-4">
+            <p className="text-gray-700">
+              ¿Estás seguro de que deseas eliminar a <strong>{userToDelete.nombre}</strong>?
+            </p>
+            <p className="text-sm text-red-600 bg-red-50 p-3 rounded-md">
+              Esta acción eliminará el usuario de la base de datos y su cuenta de acceso (email/contraseña). No se puede deshacer.
+            </p>
+            {error && (
+              <div className="text-red-600 text-sm bg-red-50 p-3 rounded-md">{error}</div>
+            )}
+            <div className="flex justify-end gap-3 pt-2">
+              <Button
+                type="button"
+                onClick={() => { setIsDeleteModalOpen(false); setUserToDelete(null); setError(null); }}
+                className="bg-gray-200 text-gray-800 hover:bg-gray-300"
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="button"
+                onClick={handleDeleteUser}
+                disabled={loading}
+                className="bg-red-600 text-white hover:bg-red-700 disabled:opacity-50"
+              >
+                {loading ? 'Eliminando...' : 'Eliminar'}
+              </Button>
+            </div>
+          </div>
         </Modal>
       )}
 
@@ -551,27 +622,22 @@ const Users = () => {
             <div className="flex justify-end space-x-3 pt-4">
               <Button
                 type="button"
+                disabled={isCreating}
                 onClick={() => {
                   setIsCreateModalOpen(false);
-                  setNewUser({
-                    nombre: '',
-                    rol: 'asesora',
-                    celular: '',
-                    fecha_nacimiento: '',
-                    id_tienda: '',
-                    email: '',
-                    password: ''
-                  });
+                  setError(null);
+                  setNewUser({ nombre: '', rol: 'asesora', celular: '', fecha_nacimiento: '', id_tienda: '', email: '', password: '' });
                 }}
-                className="bg-gray-200 text-gray-800 hover:bg-gray-300"
+                className="bg-gray-200 text-gray-800 hover:bg-gray-300 disabled:opacity-50"
               >
                 Cancelar
               </Button>
               <Button
                 type="submit"
-                className="bg-blue-600 text-white hover:bg-blue-700"
+                disabled={isCreating}
+                className="bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
               >
-                Crear Usuario
+                {isCreating ? 'Creando...' : 'Crear Usuario'}
               </Button>
             </div>
           </form>

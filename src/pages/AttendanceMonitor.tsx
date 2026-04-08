@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Card } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
-import { Clock, Users, Store as StoreIcon, RefreshCw } from 'lucide-react';
+import { Modal } from '../components/ui/Modal';
+import { Clock, Users, Store as StoreIcon, RefreshCw, FileText } from 'lucide-react';
 import { Button } from '../components/ui/Button';
 import { supabase } from '../supabaseClient';
 
@@ -14,6 +15,8 @@ interface ActiveEmployee {
   wifi_verified: boolean;
   isLate: boolean;
   expectedTime: string | null;
+  late_note?: string | null;
+  attendance_id: number;
 }
 
 interface StoreAttendance {
@@ -28,6 +31,10 @@ const AttendanceMonitor: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [userRole, setUserRole] = useState<string | null>(null);
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
+  const [showNoteModal, setShowNoteModal] = useState(false);
+  const [selectedEmployee, setSelectedEmployee] = useState<ActiveEmployee | null>(null);
+  const [lateNote, setLateNote] = useState('');
+  const [savingNote, setSavingNote] = useState(false);
 
   useEffect(() => {
     checkUserRole();
@@ -91,6 +98,7 @@ const AttendanceMonitor: React.FC = () => {
               id_usuario,
               check_in,
               wifi_verified,
+              late_note,
               usuarios!inner(
                 id_usuario,
                 nombre,
@@ -146,7 +154,9 @@ const AttendanceMonitor: React.FC = () => {
               duration: calculateDuration(checkInTime),
               wifi_verified: record.wifi_verified,
               isLate,
-              expectedTime
+              expectedTime,
+              late_note: record.late_note || null,
+              attendance_id: record.id
             };
           });
 
@@ -184,6 +194,37 @@ const AttendanceMonitor: React.FC = () => {
       default: return 'default';
     }
   }, []);
+
+  const handleAddNote = (employee: ActiveEmployee) => {
+    setSelectedEmployee(employee);
+    setLateNote(employee.late_note || '');
+    setShowNoteModal(true);
+  };
+
+  const handleSaveNote = async () => {
+    if (!selectedEmployee) return;
+    
+    setSavingNote(true);
+    try {
+      const { error } = await supabase
+        .from('attendance_records')
+        .update({ late_note: lateNote.trim() || null })
+        .eq('id', selectedEmployee.attendance_id);
+
+      if (error) throw error;
+
+      // Actualizar datos localmente
+      await loadAttendanceData();
+      setShowNoteModal(false);
+      setSelectedEmployee(null);
+      setLateNote('');
+    } catch (error) {
+      console.error('Error guardando anotación:', error);
+      alert('Error al guardar la anotación');
+    } finally {
+      setSavingNote(false);
+    }
+  };
 
   if (userRole !== 'admin' && userRole !== 'coordinador') {
     return (
@@ -287,45 +328,63 @@ const AttendanceMonitor: React.FC = () => {
                   {store.activeEmployees.map((employee) => (
                     <div
                       key={employee.id_usuario}
-                      className="flex items-center justify-between p-4 bg-gray-50 rounded-lg border border-gray-200"
+                      className="p-4 bg-gray-50 rounded-lg border border-gray-200"
                     >
-                      <div className="flex items-center gap-4">
-                        <div className="w-10 h-10 bg-primary-100 rounded-full flex items-center justify-center">
-                          <span className="text-primary-600 font-semibold">
-                            {employee.nombre.charAt(0).toUpperCase()}
-                          </span>
-                        </div>
-                        <div>
-                          <p className="font-medium text-gray-900">{employee.nombre}</p>
-                          <div className="flex items-center gap-2 mt-1 flex-wrap">
-                            <Badge variant={getRoleBadgeVariant(employee.rol)} size="sm">
-                              {employee.rol}
-                            </Badge>
-                            {employee.wifi_verified ? (
-                              <span className="text-xs text-green-600">✓ WiFi verificado</span>
-                            ) : (
-                              <span className="text-xs text-orange-600">⚠ Sin verificar WiFi</span>
-                            )}
-                            {employee.isLate && (
-                              <Badge variant="error" size="sm">
-                                🕐 Llegada tarde
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="flex items-center gap-4 flex-1">
+                          <div className="w-10 h-10 bg-primary-100 rounded-full flex items-center justify-center flex-shrink-0">
+                            <span className="text-primary-600 font-semibold">
+                              {employee.nombre.charAt(0).toUpperCase()}
+                            </span>
+                          </div>
+                          <div className="flex-1">
+                            <p className="font-medium text-gray-900">{employee.nombre}</p>
+                            <div className="flex items-center gap-2 mt-1 flex-wrap">
+                              <Badge variant={getRoleBadgeVariant(employee.rol)} size="sm">
+                                {employee.rol}
                               </Badge>
+                              {employee.wifi_verified ? (
+                                <span className="text-xs text-green-600">✓ WiFi verificado</span>
+                              ) : (
+                                <span className="text-xs text-orange-600">⚠ Sin verificar WiFi</span>
+                              )}
+                              {employee.isLate && (
+                                <Badge variant="error" size="sm">
+                                  🕐 Llegada tarde
+                                </Badge>
+                              )}
+                            </div>
+                            {employee.isLate && employee.late_note && (
+                              <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded text-xs">
+                                <p className="text-yellow-800"><strong>Anotación:</strong> {employee.late_note}</p>
+                              </div>
                             )}
                           </div>
                         </div>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-sm font-medium text-gray-900">
-                          Entrada: {formatTime(employee.check_in)}
-                        </p>
-                        {employee.expectedTime && (
-                          <p className="text-xs text-gray-500">
-                            Hora límite: {employee.expectedTime}
+                        <div className="text-right flex-shrink-0">
+                          <p className="text-sm font-medium text-gray-900">
+                            Entrada: {formatTime(employee.check_in)}
                           </p>
-                        )}
-                        <p className="text-sm text-gray-600">
-                          Duración: {employee.duration}
-                        </p>
+                          {employee.expectedTime && (
+                            <p className="text-xs text-gray-500">
+                              Hora límite: {employee.expectedTime}
+                            </p>
+                          )}
+                          <p className="text-sm text-gray-600">
+                            Duración: {employee.duration}
+                          </p>
+                          {employee.isLate && (
+                            <Button
+                              onClick={() => handleAddNote(employee)}
+                              size="sm"
+                              variant="outline"
+                              className="mt-2 text-xs"
+                            >
+                              <FileText className="w-3 h-3 mr-1" />
+                              {employee.late_note ? 'Editar nota' : 'Agregar nota'}
+                            </Button>
+                          )}
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -346,6 +405,60 @@ const AttendanceMonitor: React.FC = () => {
           </Card>
         )}
       </div>
+
+      {/* Modal para agregar/editar anotación */}
+      {showNoteModal && selectedEmployee && (
+        <Modal
+          isOpen={showNoteModal}
+          onClose={() => {
+            setShowNoteModal(false);
+            setSelectedEmployee(null);
+            setLateNote('');
+          }}
+          title={`Anotación de Llegada Tarde - ${selectedEmployee.nombre}`}
+        >
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Motivo de la llegada tarde
+              </label>
+              <textarea
+                value={lateNote}
+                onChange={(e) => setLateNote(e.target.value)}
+                placeholder="Ej: Cita médica, problemas de transporte, emergencia familiar..."
+                rows={4}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Esta anotación quedará registrada permanentemente en el historial de asistencia.
+              </p>
+            </div>
+
+            <div className="flex justify-end gap-3">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setShowNoteModal(false);
+                  setSelectedEmployee(null);
+                  setLateNote('');
+                }}
+                disabled={savingNote}
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="button"
+                onClick={handleSaveNote}
+                disabled={savingNote}
+                className="bg-primary-600 text-white"
+              >
+                {savingNote ? 'Guardando...' : 'Guardar Anotación'}
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 };

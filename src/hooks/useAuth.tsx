@@ -11,6 +11,11 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+// Flag para suprimir cambios de auth durante el flujo de registro
+// Evita que signUp redirija al dashboard mientras se crea un usuario
+let suppressNextAuthChange = false;
+export const setSuppressNextAuthChange = (val: boolean) => { suppressNextAuthChange = val; };
+
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (context === undefined) {
@@ -24,200 +29,88 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    let mounted = true;
+    let isMounted = true;
 
-    const initializeAuth = async () => {
-      if (!mounted) return;
-
-      try {
-        console.log('🔄 Verificando sesión existente...');
-        
-        // Obtener la sesión actual
-        const { data, error: sessionError } = await supabase.auth.getSession();
-        
-        if (sessionError) {
-          console.error('❌ Error obteniendo sesión:', sessionError);
-          if (mounted) setLoading(false);
-          return;
-        }
-
-        const session = data.session;
-
-        if (!session?.user) {
-          console.log('ℹ️ No hay sesión activa');
-          if (mounted) setLoading(false);
-          return;
-        }
-
-        console.log('✅ Sesión encontrada, cargando datos de usuario...');
-
-        // Si hay sesión, cargar datos del usuario
-        const { data: userData, error: userError } = await supabase
-          .from('usuarios')
-          .select('id_usuario, nombre, rol, id_tienda, celular')
-          .eq('id', session.user.id)
-          .single();
-
-        if (userError) {
-          console.error('❌ Error cargando datos de usuario:', userError);
-          if (mounted) setLoading(false);
-          return;
-        }
-
-        if (!userData) {
-          console.error('❌ No se encontraron datos del usuario');
-          if (mounted) setLoading(false);
-          return;
-        }
-
-        console.log('✅ Sesión restaurada para:', userData.nombre);
-        
-        if (mounted) {
-          setUser({
-            id: session.user.id,
-            name: userData.nombre,
-            email: userData.celular + '@tienda.com',
-            role: userData.rol,
-            store: userData.id_tienda?.toString(),
-            avatar: ''
-          });
-          setLoading(false);
-        }
-      } catch (error) {
-        console.error('❌ Error en inicialización de auth:', error);
-        if (mounted) setLoading(false);
-      }
-    };
-
-    initializeAuth();
-
-    // Cleanup function
-    return () => {
-      mounted = false;
-    };
-
-    // Suscribirse a cambios en la autenticación
-    // Suscribirse a cambios en el estado de autenticación
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log('🔄 Cambio en estado de autenticación:', event);
-      
-      if (!mounted) return;
-
-      if (!session?.user) {
-        console.log('ℹ️ Usuario desconectado');
-        setUser(null);
+    const loadUser = async (sessionUser: { id: string; email?: string } | null) => {
+      if (!sessionUser) {
+        if (isMounted) { setUser(null); setLoading(false); }
         return;
       }
-
       try {
-        console.log('🔄 Actualizando datos de usuario...');
-        const { data: userData, error: userError } = await supabase
+        const { data: userData } = await supabase
           .from('usuarios')
           .select('id_usuario, nombre, rol, id_tienda, celular')
-          .eq('id', session.user.id)
+          .eq('id', sessionUser.id)
           .single();
 
-        if (userError || !userData) {
-          console.error('❌ Error actualizando datos de usuario:', userError);
-          return;
-        }
-
-        console.log('✅ Datos de usuario actualizados:', userData.nombre);
-        if (mounted) {
+        if (!isMounted) return;
+        if (userData) {
           setUser({
-            id: session.user.id,
+            id: sessionUser.id,
             name: userData.nombre,
-            email: userData.celular + '@tienda.com',
+            email: sessionUser.email || '',
             role: userData.rol,
             store: userData.id_tienda?.toString(),
             avatar: ''
           });
+        } else {
+          setUser(null);
         }
-      } catch (error) {
-        console.error('❌ Error en actualización de usuario:', error);
+      } catch {
+        if (isMounted) setUser(null);
+      } finally {
+        if (isMounted) setLoading(false);
+      }
+    };
+
+    // Cargar sesión inicial directamente (no depende de eventos)
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!suppressNextAuthChange) {
+        loadUser(session?.user ?? null);
+      } else {
+        if (isMounted) setLoading(false);
       }
     });
 
+    // Escuchar cambios posteriores (login, logout)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (suppressNextAuthChange) {
+        if (event === 'SIGNED_OUT') suppressNextAuthChange = false;
+        return;
+      }
+      // INITIAL_SESSION ya lo manejamos con getSession, ignorarlo aquí
+      if (event === 'INITIAL_SESSION') return;
+
+      loadUser(session?.user ?? null);
+    });
+
     return () => {
+      isMounted = false;
       subscription.unsubscribe();
     };
   }, []);
 
   const signIn = async (email: string, password: string) => {
-    try {
-      setLoading(true);
-      
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email: email,
-        password: password
-      });
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
 
-      if (error) {
-        // Mensaje de error más amigable
-        if (error.message.includes('Invalid login credentials') || 
-            error.message.includes('Invalid') ||
-            error.message.includes('Email not confirmed')) {
-          throw new Error('Usuario o contraseña incorrectos');
-        }
-        throw new Error(error.message);
-      }
-
-      if (!data.user) {
+    if (error) {
+      if (error.message.includes('Invalid login credentials') || error.message.includes('Email not confirmed')) {
         throw new Error('Usuario o contraseña incorrectos');
       }
-
-      // Cargar datos del usuario inmediatamente
-      const { data: userData, error: userError } = await supabase
-        .from('usuarios')
-        .select('id_usuario, nombre, rol, id_tienda, celular')
-        .eq('id', data.user.id)
-        .single();
-
-      if (userError || !userData) {
-        console.error('❌ Error cargando datos:', userError);
-        throw new Error('No se pudieron cargar los datos del usuario');
-      }
-
-      console.log('✅ Usuario cargado:', userData.nombre);
-      setUser({
-        id: data.user.id,
-        name: userData.nombre,
-        email: userData.celular + '@tienda.com',
-        role: userData.rol,
-        store: userData.id_tienda?.toString(),
-        avatar: ''
-      });
-    } catch (error) {
-      setLoading(false);
-      throw error;
-    } finally {
-      setLoading(false);
+      throw new Error(error.message);
     }
+
+    if (!data.user) throw new Error('Usuario o contraseña incorrectos');
+    // El usuario se setea automáticamente via onAuthStateChange (SIGNED_IN)
   };
 
   const signOut = async () => {
-    try {
-      console.log('🚪 Cerrando sesión...');
-      await supabase.auth.signOut();
-      setUser(null);
-      console.log('✅ Sesión cerrada');
-    } catch (error) {
-      console.error('❌ Error cerrando sesión:', error);
-      setUser(null);
-    }
-  };
-
-  const value = {
-    user,
-    loading,
-    signIn,
-    signOut
+    await supabase.auth.signOut();
+    // El usuario se limpia automáticamente via onAuthStateChange (SIGNED_OUT)
   };
 
   return (
-    <AuthContext.Provider value={value}>
+    <AuthContext.Provider value={{ user, loading, signIn, signOut }}>
       {children}
     </AuthContext.Provider>
   );

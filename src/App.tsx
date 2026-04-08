@@ -2,7 +2,6 @@ import React from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from './hooks/useAuth';
 import { useDarkMode } from './hooks/useDarkMode';
-import { useContentSquare } from './hooks/useContentSquare';
 import Sidebar from './components/layout/Sidebar';
 import Header from './components/layout/Header';
 import Dashboard from './pages/Dashboard';
@@ -30,7 +29,6 @@ import Statistics from './pages/Statistics';
 
 import Stores from './pages/Stores';
 import Users from './pages/Users';
-import ContentSquareTest from './pages/ContentSquareTest';
 
 // Componentes placeholder para las rutas faltantes
 const Analytics = () => <div className="p-6 mt-10"><h1 className="text-2xl font-bold">Analíticas Avanzadas</h1><p className="text-gray-600 mt-2">Reportes y análisis detallados</p></div>;
@@ -43,21 +41,6 @@ function App() {
   
   // Aplicar tema oscuro desde el inicio
   useDarkMode();
-  
-  // Inicializar ContentSquare
-  const { setUserId, setCustomVariable, tagSession } = useContentSquare();
-  
-  // Identificar usuario cuando haga login
-  React.useEffect(() => {
-    if (user && user.email) {
-      setUserId(user.id);
-      setCustomVariable('user_email', user.email);
-      setCustomVariable('user_id', user.id);
-      
-      // Etiquetar la sesión como autenticada
-      tagSession(['authenticated', 'erp_user']);
-    }
-  }, [user, setUserId, setCustomVariable, tagSession]);
 
   // Mostrar loading solo cuando está procesando login
   if (loading) {
@@ -92,6 +75,14 @@ function App() {
   // Componente para rutas accesibles por admin y coordinador
   const CoordinadorRoute = ({ children }: { children: React.ReactNode }) => {
     if (user?.role !== 'admin' && user?.role !== 'coordinador') {
+      return <Navigate to="/dashboard" replace />;
+    }
+    return <>{children}</>;
+  };
+
+  // Rutas de auditoría: admin, coordinador y auditor
+  const AuditorRoute = ({ children }: { children: React.ReactNode }) => {
+    if (user?.role !== 'admin' && user?.role !== 'coordinador' && user?.role !== 'auditor') {
       return <Navigate to="/dashboard" replace />;
     }
     return <>{children}</>;
@@ -155,10 +146,18 @@ function App() {
                 <Statistics />
               </AdminRoute>
             } />
-            <Route path="/auditoria" element={<Auditoria />} />
-            <Route path="/auditoria/historial" element={<AuditoriaHistorial />} />
-            <Route path="/auditoria/estadisticas" element={<AuditoriaEstadisticas />} />
-            <Route path="/preguntas-maestras" element={<PreguntasMaestras />} />
+            <Route path="/auditoria" element={
+              <AuditorRoute><Auditoria /></AuditorRoute>
+            } />
+            <Route path="/auditoria/historial" element={
+              <AuditorRoute><AuditoriaHistorial /></AuditorRoute>
+            } />
+            <Route path="/auditoria/estadisticas" element={
+              <AuditorRoute><AuditoriaEstadisticas /></AuditorRoute>
+            } />
+            <Route path="/preguntas-maestras" element={
+              <AdminRoute><PreguntasMaestras /></AdminRoute>
+            } />
             <Route path="/analytics" element={
               <AdminRoute>
                 <Analytics />
@@ -169,11 +168,6 @@ function App() {
             <Route path="/notifications" element={<Notifications />} />
             <Route path="/profile" element={<Profile />} />
             <Route path="/settings" element={<Settings />} />
-            <Route path="/contentsquare-test" element={
-              <AdminRoute>
-                <ContentSquareTest />
-              </AdminRoute>
-            } />
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Routes>
         </main>

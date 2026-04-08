@@ -60,20 +60,6 @@ const AuditoriaHistorial = () => {
       setLoading(true);
       setError(null);
       
-      console.log('🔍 Cargando historial de auditorías...');
-      
-      // Primero hacer una prueba simple de conexión
-      const { data: testData, error: testError } = await supabase
-        .from('auditorias')
-        .select('count', { count: 'exact', head: true });
-        
-      if (testError) {
-        console.error('❌ Error de conexión:', testError);
-        throw new Error(`Error de conexión: ${testError.message}`);
-      }
-      
-      console.log('✅ Conexión exitosa, auditorías encontradas:', testData);
-      
       // Obtener auditorías con información de tiendas
       const { data: auditoriasData, error: auditoriaError } = await supabase
         .from('auditorias')
@@ -102,58 +88,43 @@ const AuditoriaHistorial = () => {
         .limit(50); // Limitar a 50 para evitar problemas de rendimiento
 
       if (auditoriaError) {
-        console.error('❌ Error en la consulta de auditorías:', auditoriaError);
-        
-        // Si el error es por tabla no encontrada o problemas de permisos
         if (auditoriaError.code === 'PGRST116' || auditoriaError.code === '42P01') {
           throw new Error('La tabla de auditorías no existe o no tienes permisos para accederla');
         }
-        
         throw new Error(auditoriaError.message || 'Error desconocido al obtener auditorías');
       }
-      
-      console.log('✅ Auditorías obtenidas:', auditoriasData?.length || 0);
-      
-      // Si no hay auditorías, no es un error, simplemente mostrar vacío
+
       if (!auditoriasData || auditoriasData.length === 0) {
-        console.log('ℹ️ No hay auditorías para mostrar');
         setAuditorias([]);
         return;
       }
 
       // Para cada auditoría, obtener estadísticas de preguntas
+      // Las respuestas están en la tabla 'respuestas' (boolean), no en 'auditoria_preguntas'
       const auditoriasConStats = await Promise.all(
         (auditoriasData || []).map(async (auditoria) => {
           try {
-            const { data: statsData, error: statsError } = await supabase
+            const { data: statsData } = await supabase
               .from('auditoria_preguntas')
-              .select('valor_respuesta')
+              .select('respuestas(respuesta)')
               .eq('id_auditoria', auditoria.id_auditoria);
 
-            if (statsError) {
-              console.warn('⚠️ Error obteniendo estadísticas para auditoría', auditoria.id_auditoria, statsError);
-            }
-
             const totalPreguntas = statsData?.length || 0;
-            const preguntasAprobadas = statsData?.filter(p => p.valor_respuesta === 'si').length || 0;
+            const preguntasAprobadas = statsData?.filter(
+              (p: any) => Array.isArray(p.respuestas) && p.respuestas[0]?.respuesta === true
+            ).length || 0;
 
             return {
               ...auditoria,
               total_preguntas: totalPreguntas,
               preguntas_aprobadas: preguntasAprobadas
             } as AuditoriaHistorial;
-          } catch (err) {
-            console.warn('⚠️ Error procesando estadísticas para auditoría', auditoria.id_auditoria, err);
-            return {
-              ...auditoria,
-              total_preguntas: 0,
-              preguntas_aprobadas: 0
-            };
+          } catch {
+            return { ...auditoria, total_preguntas: 0, preguntas_aprobadas: 0 };
           }
         })
       );
 
-      console.log('✅ Auditorías con estadísticas:', auditoriasConStats);
       setAuditorias(auditoriasConStats);
     } catch (error) {
       console.error('❌ Error cargando historial:', error);
@@ -260,55 +231,103 @@ const AuditoriaHistorial = () => {
 
   const handleEliminarAuditoria = async () => {
     if (!auditoriaParaEliminar) return;
-    
+
     const textoEsperado = `ELIMINAR ${auditoriaParaEliminar.id_auditoria}`;
     if (confirmacionTexto !== textoEsperado) {
       setError('Texto de confirmación incorrecto');
       return;
     }
 
+    const idAuditoria = auditoriaParaEliminar.id_auditoria;
+
     try {
       setEliminando(true);
-      
-      // Primero eliminar las preguntas relacionadas
+
+      // 1. Obtener IDs de preguntas para poder borrar sus respuestas
+      const { data: preguntasData } = await supabase
+        .from('auditoria_preguntas')
+        .select('id_auditoria_pregunta')
+        .eq('id_auditoria', idAuditoria);
+
+      const idPreguntas = (preguntasData || []).map(p => p.id_auditoria_pregunta);
+
+      // 2. Borrar respuestas (FK -> auditoria_preguntas)
+      if (idPreguntas.length > 0) {
+        const { error: respuestasError } = await supabase
+          .from('respuestas')
+          .delete()
+          .in('id_auditoria_pregunta', idPreguntas);
+
+        if (respuestasError) throw new Error(`Error eliminando respuestas: ${respuestasError.message}`);
+      }
+
+      // 3. Borrar preguntas_eliminadas (FK -> auditorias)
+      const { error: elimError } = await supabase
+        .from('preguntas_eliminadas')
+        .delete()
+        .eq('id_auditoria', idAuditoria);
+
+      if (elimError) throw new Error(`Error eliminando preguntas eliminadas: ${elimError.message}`);
+
+      // 4. Borrar preguntas_variables (FK -> auditorias)
+      const { error: varsError } = await supabase
+        .from('preguntas_variables')
+        .delete()
+        .eq('id_auditoria', idAuditoria);
+
+      if (varsError) throw new Error(`Error eliminando preguntas variables: ${varsError.message}`);
+
+      // 5. Borrar auditoria_preguntas (FK -> auditorias)
       const { error: preguntasError } = await supabase
         .from('auditoria_preguntas')
         .delete()
-        .eq('id_auditoria', auditoriaParaEliminar.id_auditoria);
+        .eq('id_auditoria', idAuditoria);
 
-      if (preguntasError) {
-        console.warn('Error eliminando preguntas:', preguntasError);
-      }
+      if (preguntasError) throw new Error(`Error eliminando preguntas: ${preguntasError.message}`);
 
-      // Eliminar las fotos relacionadas
-      const { error: fotosError } = await supabase
+      // 6. Borrar fotos del Storage y luego los registros en auditoria_fotos
+      const { data: fotosData } = await supabase
         .from('auditoria_fotos')
-        .delete()
-        .eq('id_auditoria', auditoriaParaEliminar.id_auditoria);
+        .select('url_foto')
+        .eq('id_auditoria', idAuditoria);
 
-      if (fotosError) {
-        console.warn('Error eliminando fotos:', fotosError);
+      if (fotosData && fotosData.length > 0) {
+        // Extraer paths relativos del bucket (la URL tiene el formato: .../auditoria-fotos/PATH)
+        const storagePaths = fotosData
+          .map(f => {
+            const match = f.url_foto.match(/auditoria-fotos\/(.+)$/);
+            return match ? match[1] : null;
+          })
+          .filter(Boolean) as string[];
+
+        if (storagePaths.length > 0) {
+          await supabase.storage.from('auditoria-fotos').remove(storagePaths);
+        }
+
+        const { error: fotosDbError } = await supabase
+          .from('auditoria_fotos')
+          .delete()
+          .eq('id_auditoria', idAuditoria);
+
+        if (fotosDbError) throw new Error(`Error eliminando fotos: ${fotosDbError.message}`);
       }
 
-      // Finalmente eliminar la auditoría
+      // 7. Finalmente eliminar la auditoría
       const { error: auditoriaError } = await supabase
         .from('auditorias')
         .delete()
-        .eq('id_auditoria', auditoriaParaEliminar.id_auditoria);
+        .eq('id_auditoria', idAuditoria);
 
       if (auditoriaError) throw auditoriaError;
 
-      // Actualizar la lista local
-      setAuditorias(prev => prev.filter(a => a.id_auditoria !== auditoriaParaEliminar.id_auditoria));
-      
-      // Cerrar modal
+      setAuditorias(prev => prev.filter(a => a.id_auditoria !== idAuditoria));
       setAuditoriaParaEliminar(null);
       setConfirmacionTexto('');
       setError(null);
-      
+
     } catch (error) {
       console.error('Error eliminando auditoría:', error);
-      setError('Error al eliminar la auditoría');
+      setError(error instanceof Error ? error.message : 'Error al eliminar la auditoría');
     } finally {
       setEliminando(false);
     }

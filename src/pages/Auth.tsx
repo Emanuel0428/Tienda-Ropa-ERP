@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useAuth } from '../hooks/useAuth';
+import { useAuth, setSuppressNextAuthChange } from '../hooks/useAuth';
 import { supabase } from '../supabaseClient';
 
 const Auth: React.FC = () => {
@@ -46,144 +46,79 @@ const Auth: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    
+
     setError('');
     setSuccess('');
     setLoading(true);
 
     try {
       if (isRegister) {
-        // Registro de nuevo usuario
-        console.log('📝 Registrando nuevo usuario...');
         const { nombre, email, rol, id_tienda, fecha_nacimiento, celular, password } = form;
-        
-        // Asegurar que el rol sea válido
         const rolValido = rol || 'asesora';
-        console.log('🔍 Rol a usar:', rolValido);
-        
-        // Formatear el número de teléfono para formato internacional
-        let telefonoFormateado = celular.trim();
-        
-        // Validar que sea un número válido
-        if (!/^\+?\d{10,15}$/.test(telefonoFormateado.replace(/\s/g, ''))) {
-          setError('El número de celular debe tener entre 10 y 15 dígitos');
-          return;
+
+        // Validar y formatear teléfono
+        let telefonoFormateado = celular.trim().replace(/\s/g, '');
+
+        if (!/^\+?\d{10,15}$/.test(telefonoFormateado)) {
+          throw new Error('El número de celular debe tener entre 10 y 15 dígitos');
         }
-        
-        // Si el número no tiene código de país, agregar +57 (Colombia)
+
         if (!telefonoFormateado.startsWith('+')) {
-          // Remover cualquier espacio y agregar +57
-          telefonoFormateado = telefonoFormateado.replace(/\s/g, '');
+          if (telefonoFormateado.length < 10) {
+            throw new Error('El número de celular debe tener al menos 10 dígitos');
+          }
           if (telefonoFormateado.length === 10) {
             telefonoFormateado = `+57${telefonoFormateado}`;
-          } else if (telefonoFormateado.length < 10) {
-            setError('El número de celular debe tener al menos 10 dígitos');
-            return;
           }
         }
-        
-        console.log('📱 Teléfono original:', celular);
-        console.log('📱 Teléfono formateado:', telefonoFormateado);
-        
+
+        // Suprimir el cambio de auth para que signUp no redirija al dashboard
+        setSuppressNextAuthChange(true);
+
         // Crear usuario en Supabase Auth
         const { data: authData, error: signUpError } = await supabase.auth.signUp({
-          email: email,
+          email,
           password,
           options: {
-            data: { 
-              display_name: nombre,
-              full_name: nombre,
-              phone: telefonoFormateado,
-              phone_number: telefonoFormateado, // Campo alternativo
-              nombre, 
-              rol: rolValido, 
-              id_tienda: parseInt(id_tienda), 
-              fecha_nacimiento, 
-              celular: telefonoFormateado
-            }
+            data: { full_name: nombre, nombre, rol: rolValido, id_tienda: parseInt(id_tienda), fecha_nacimiento, celular: telefonoFormateado }
           }
         });
 
-        if (signUpError) {
-          console.error('❌ Error en registro:', signUpError);
-          setError(signUpError.message);
-          return;
-        }
+        if (signUpError) throw new Error(signUpError.message);
+        if (!authData.user) throw new Error('No se pudo crear el usuario');
 
-        if (authData.user) {
-          console.log('✅ Usuario de auth creado:', authData.user.id);
-          
-          // Intentar actualizar el perfil con el teléfono
-          try {
-            const { error: updateError } = await supabase.auth.updateUser({
-              data: {
-                phone: telefonoFormateado,
-                phone_number: telefonoFormateado,
-                user_metadata: {
-                  phone: telefonoFormateado,
-                  phone_number: telefonoFormateado,
-                  display_name: nombre,
-                  full_name: nombre
-                }
-              }
-            });
-            
-            if (updateError) {
-              console.warn('⚠️ No se pudo actualizar el perfil:', updateError.message);
-            } else {
-              console.log('✅ Perfil actualizado con teléfono');
-            }
-          } catch (updateErr) {
-            console.warn('⚠️ Error actualizando perfil:', updateErr);
-          }
-          
-          // Insertar datos adicionales en tabla usuarios
-          const { error: dbError } = await supabase
-            .from('usuarios')
-            .insert([
-              {
-                id: authData.user.id,
-                nombre,
-                rol: rolValido,
-                id_tienda: parseInt(id_tienda),
-                fecha_nacimiento,
-                celular: telefonoFormateado
-              }
-            ]);
+        // Insertar en tabla usuarios usando el UUID del nuevo usuario
+        const { error: dbError } = await supabase
+          .from('usuarios')
+          .insert([{
+            id: authData.user.id,
+            nombre,
+            rol: rolValido,
+            id_tienda: parseInt(id_tienda),
+            fecha_nacimiento,
+            celular: telefonoFormateado
+          }]);
 
-          if (dbError) {
-            console.error('❌ Error guardando en BD:', dbError);
-            setError('Error guardando datos del usuario: ' + dbError.message);
-          } else {
-            console.log('✅ Usuario registrado correctamente');
-            setSuccess('Usuario creado correctamente. Puedes iniciar sesión.');
-            // Limpiar formulario
-            setForm({
-              nombre: '',
-              email: '',
-              rol: 'asesora',
-              id_tienda: '',
-              fecha_nacimiento: '',
-              celular: '',
-              password: '',
-            });
-            setIsRegister(false);
-          }
-        }
+        if (dbError) throw new Error('Error guardando datos del usuario: ' + dbError.message);
+
+        // Cerrar sesión del nuevo usuario inmediatamente para que el admin
+        // no pierda su sesión y no haya redirección automática al dashboard
+        await supabase.auth.signOut();
+
+        setSuccess('Usuario creado correctamente. Puedes iniciar sesión.');
+        setForm({ nombre: '', email: '', rol: 'asesora', id_tienda: '', fecha_nacimiento: '', celular: '', password: '' });
+        setIsRegister(false);
+
       } else {
-        // Inicio de sesión
         const { email, password } = form;
-        
-        if (!email || !password) {
-          setError('Por favor completa todos los campos');
-          setLoading(false);
-          return;
-        }
-
+        if (!email || !password) throw new Error('Por favor completa todos los campos');
         await signIn(email, password);
       }
     } catch (err: any) {
-      setError(err.message || 'Usuario o contraseña incorrectos');
+      // Si falló durante el registro, asegurar que el flag quede limpio
+      setSuppressNextAuthChange(false);
+      setError(err.message || 'Ocurrió un error inesperado');
+    } finally {
       setLoading(false);
     }
   };
