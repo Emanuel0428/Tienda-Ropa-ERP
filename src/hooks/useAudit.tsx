@@ -22,7 +22,7 @@ export const useAudit = () => {
   const [auditoriaActual, setAuditoriaActual] = useState<Auditoria | null>(null);
   const [preguntasAuditoria, setPreguntasAuditoria] = useState<AuditoriaPregunta[]>([]);
   const [respuestas, setRespuestas] = useState<Map<number, Respuesta>>(new Map());
-  
+
   // Estados de formulario
   const [formularioAuditoria, setFormularioAuditoria] = useState<FormularioAuditoria>({
     id_tienda: '',
@@ -51,7 +51,7 @@ export const useAudit = () => {
     try {
       setIsLoading(true);
       setError(null);
-      
+
       // Limpiar estados previos
       setCategorias([]);
       setRespuestas(new Map());
@@ -104,9 +104,9 @@ export const useAudit = () => {
                 created_at: pregunta.created_at,
                 respuesta: undefined
               })) || [];
-            
 
-            
+
+
             return {
               ...subcategoria,
               preguntas: preguntasSubcategoria
@@ -115,7 +115,7 @@ export const useAudit = () => {
       })) || [];
 
       setCategorias(categoriasOrganizadas);
-      
+
 
     } catch (error) {
       console.error('❌ Error cargando estructura del catálogo:', error);
@@ -174,8 +174,8 @@ export const useAudit = () => {
           .map(subcategoria => ({
             ...subcategoria,
             preguntas: preguntasAuditoriaData
-              ?.filter(pregunta => 
-                pregunta.id_categoria === categoria.id && 
+              ?.filter(pregunta =>
+                pregunta.id_categoria === categoria.id &&
                 pregunta.id_subcategoria === subcategoria.id
               )
               .map(pregunta => ({
@@ -261,7 +261,7 @@ export const useAudit = () => {
       // 4. Actualizar estados y cargar estructura final
       setModoRevision(false);
       setAuditoriaActual(auditoriaData);
-      
+
       // Cargar estructura completa para UI
       await cargarEstructuraAuditoriaExistente(auditoriaData.id_auditoria);
 
@@ -281,9 +281,9 @@ export const useAudit = () => {
 
   // Guardar respuesta individual
   const guardarRespuesta = async (
-    id_auditoria_pregunta: number, 
-    respuesta: boolean, 
-    comentario?: string, 
+    id_auditoria_pregunta: number,
+    respuesta: boolean,
+    comentario?: string,
     accion_correctiva?: string
   ): Promise<boolean> => {
     if (!auditoriaActual) {
@@ -307,14 +307,14 @@ export const useAudit = () => {
 
       // Actualizar estado local
       setRespuestas(prev => new Map(prev.set(id_auditoria_pregunta, data)));
-      
+
       // Actualizar categorías con la nueva respuesta
-      setCategorias(prev => 
+      setCategorias(prev =>
         prev.map(categoria => ({
           ...categoria,
           subcategorias: categoria.subcategorias.map(subcategoria => ({
             ...subcategoria,
-            preguntas: subcategoria.preguntas.map(pregunta => 
+            preguntas: subcategoria.preguntas.map(pregunta =>
               pregunta.id_auditoria_pregunta === id_auditoria_pregunta
                 ? { ...pregunta, respuesta: data }
                 : pregunta
@@ -348,11 +348,11 @@ export const useAudit = () => {
         subcategoria.preguntas.forEach(pregunta => {
           categoriaTotalPreguntas++;
           totalPreguntas++;
-          
+
           if (pregunta.respuesta) {
             categoriaRespondidas++;
             preguntasRespondidas++;
-            
+
             if (pregunta.respuesta.respuesta === true) {
               categoriaAprobadas++;
             }
@@ -360,12 +360,12 @@ export const useAudit = () => {
         });
       });
 
-      const porcentajeCumplimiento = categoriaRespondidas > 0 
-        ? Math.round((categoriaAprobadas / categoriaRespondidas) * 100) 
+      const porcentajeCumplimiento = categoriaRespondidas > 0
+        ? Math.round((categoriaAprobadas / categoriaRespondidas) * 100)
         : 0;
-      
+
       const contribucionPonderada = (porcentajeCumplimiento * categoria.peso) / 100;
-      
+
       // Solo contar para el total si tiene preguntas respondidas
       if (categoriaRespondidas > 0) {
         sumaPonderada += contribucionPonderada;
@@ -397,9 +397,9 @@ export const useAudit = () => {
 
   // Finalizar auditoría y calcular calificación final
   const finalizarAuditoria = async (
-    observacionesFinales?: string, 
-    notasPersonal?: string, 
-    notasCampanas?: string, 
+    observacionesFinales?: string,
+    notasPersonal?: string,
+    notasCampanas?: string,
     conclusiones?: string
   ): Promise<boolean> => {
     if (!auditoriaActual) {
@@ -411,7 +411,7 @@ export const useAudit = () => {
       setIsSaving(true);
 
       const resumen = calcularResumen();
-      
+
       const { error } = await supabase
         .from('auditorias')
         .update({
@@ -427,10 +427,10 @@ export const useAudit = () => {
 
       if (error) throw error;
 
-      
+
       setShowSuccessMessage(true);
       setTimeout(() => setShowSuccessMessage(false), 3000);
-      
+
       return true;
 
     } catch (error) {
@@ -527,7 +527,7 @@ export const useAudit = () => {
       if (error) throw error;
 
       await cargarEstructuraCatalogo(); // Recargar estructura
-      
+
       return data;
 
     } catch (error) {
@@ -551,7 +551,7 @@ export const useAudit = () => {
       if (error) throw error;
 
       await cargarEstructuraCatalogo(); // Recargar estructura
-      
+
       return true;
 
     } catch (error) {
@@ -571,7 +571,7 @@ export const useAudit = () => {
       if (error) throw error;
 
       await cargarEstructuraCatalogo(); // Recargar estructura
-      
+
       return true;
 
     } catch (error) {
@@ -604,6 +604,21 @@ export const useAudit = () => {
       const nuevaRespuesta = { ...respuestaActual, comentario };
       setRespuestas(prev => new Map(prev.set(id_auditoria_pregunta, nuevaRespuesta)));
 
+      // También actualizar categorias para que el textarea refleje el cambio inmediato
+      setCategorias(prev =>
+        prev.map(categoria => ({
+          ...categoria,
+          subcategorias: categoria.subcategorias.map(subcategoria => ({
+            ...subcategoria,
+            preguntas: subcategoria.preguntas.map(pregunta =>
+              pregunta.id_auditoria_pregunta === id_auditoria_pregunta
+                ? { ...pregunta, respuesta: nuevaRespuesta }
+                : pregunta
+            )
+          }))
+        }))
+      );
+
       // Limpiar timeout anterior si existe
       if (comentarioTimeoutRef.current[id_auditoria_pregunta]) {
         clearTimeout(comentarioTimeoutRef.current[id_auditoria_pregunta]);
@@ -612,9 +627,9 @@ export const useAudit = () => {
       // Establecer nuevo timeout para guardar después de 1 segundo sin escribir
       comentarioTimeoutRef.current[id_auditoria_pregunta] = setTimeout(async () => {
         await guardarRespuesta(
-          id_auditoria_pregunta, 
-          respuestaActual.respuesta, 
-          comentario, 
+          id_auditoria_pregunta,
+          respuestaActual.respuesta,
+          comentario,
           respuestaActual.accion_correctiva
         );
         delete comentarioTimeoutRef.current[id_auditoria_pregunta];
@@ -629,6 +644,21 @@ export const useAudit = () => {
       const nuevaRespuesta = { ...respuestaActual, accion_correctiva: accionCorrectiva };
       setRespuestas(prev => new Map(prev.set(id_auditoria_pregunta, nuevaRespuesta)));
 
+      // También actualizar categorias para que el textarea refleje el cambio inmediato
+      setCategorias(prev =>
+        prev.map(categoria => ({
+          ...categoria,
+          subcategorias: categoria.subcategorias.map(subcategoria => ({
+            ...subcategoria,
+            preguntas: subcategoria.preguntas.map(pregunta =>
+              pregunta.id_auditoria_pregunta === id_auditoria_pregunta
+                ? { ...pregunta, respuesta: nuevaRespuesta }
+                : pregunta
+            )
+          }))
+        }))
+      );
+
       // Limpiar timeout anterior si existe
       if (accionCorrectivaTimeoutRef.current[id_auditoria_pregunta]) {
         clearTimeout(accionCorrectivaTimeoutRef.current[id_auditoria_pregunta]);
@@ -637,9 +667,9 @@ export const useAudit = () => {
       // Establecer nuevo timeout para guardar después de 1 segundo sin escribir
       accionCorrectivaTimeoutRef.current[id_auditoria_pregunta] = setTimeout(async () => {
         await guardarRespuesta(
-          id_auditoria_pregunta, 
-          respuestaActual.respuesta, 
-          respuestaActual.comentario, 
+          id_auditoria_pregunta,
+          respuestaActual.respuesta,
+          respuestaActual.comentario,
           accionCorrectiva
         );
         delete accionCorrectivaTimeoutRef.current[id_auditoria_pregunta];
@@ -754,7 +784,7 @@ export const useAudit = () => {
   };
 
   // ========== NUEVAS FUNCIONES MODULARES ==========
-  
+
   // Agregar pregunta variable específica para una auditoría
   const agregarPreguntaVariable = async (idAuditoria: number, subcategoriaId: number, textoPregunta: string): Promise<boolean> => {
     try {
@@ -907,7 +937,7 @@ export const useAudit = () => {
     preguntasAuditoria,
     formularioAuditoria,
     respuestas,
-    
+
     // Estados de control
     isLoading,
     isSaving,
@@ -915,12 +945,12 @@ export const useAudit = () => {
     currentStep,
     showSuccessMessage,
     modoRevision,
-    
+
     // Estados de gestión de preguntas
     showPreguntaModal,
     preguntaEditando,
     subcategoriaSeleccionada,
-    
+
     // Funciones principales
     cargarEstructuraCatalogo,
     crearNuevaAuditoria,
@@ -930,26 +960,26 @@ export const useAudit = () => {
     calcularResumen,
     obtenerAuditoriasAnteriores,
     cargarAuditoriaAnterior,
-    
+
     // Gestión de preguntas del catálogo
     agregarPregunta,
     editarPregunta,
     eliminarPregunta,
-    
+
     // Gestión de preguntas modulares
     agregarPreguntaVariable,
     eliminarPreguntaDeAuditoria,
     recargarAuditoriaActual,
-    
+
     // Handlers
     handleFormularioChange,
     handleRespuestaChange,
     handleComentarioChange,
     handleAccionCorrectivaChange,
-    
+
     // Funciones de carga específicas
     cargarEstructuraAuditoriaExistente,
-    
+
     // Setters
     setCurrentStep,
     setShowSuccessMessage,
