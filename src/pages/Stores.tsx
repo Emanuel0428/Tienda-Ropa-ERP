@@ -15,6 +15,7 @@ interface Store {
   id_asesora: number | null;
   created_at: string;
   meta_mensual: number;
+  zona: 'norte' | 'sur' | null;
 }
 
 const Stores: React.FC = () => {
@@ -26,12 +27,14 @@ const Stores: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [zonaFilter, setZonaFilter] = useState<'todas' | 'norte' | 'sur'>('todas');
   const [formData, setFormData] = useState({
     nombre: '',
     direccion: '',
     ciudad: '',
     telefono: '',
-    meta_mensual: 0
+    meta_mensual: 0,
+    zona: '' as '' | 'norte' | 'sur'
   });
 
   // Cargar tiendas
@@ -55,7 +58,7 @@ const Stores: React.FC = () => {
   }, []);
 
   // Manejar cambios en el formulario
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({
       ...prev,
@@ -78,7 +81,8 @@ const Stores: React.FC = () => {
       // Preparamos los datos asegurándonos que meta_mensual sea un número válido
       const storeData = {
         ...formData,
-        meta_mensual: formData.meta_mensual ? Number(formData.meta_mensual) : 0
+        meta_mensual: formData.meta_mensual ? Number(formData.meta_mensual) : 0,
+        zona: formData.zona || null
       };
 
       if (editingStore) {
@@ -104,7 +108,7 @@ const Stores: React.FC = () => {
       await fetchStores();
       setIsModalOpen(false);
       setEditingStore(null);
-      setFormData({ nombre: '', direccion: '', ciudad: '', telefono: '', meta_mensual: 0 });
+      setFormData({ nombre: '', direccion: '', ciudad: '', telefono: '', meta_mensual: 0, zona: '' as '' | 'norte' | 'sur' });
       setTimeout(() => setSuccessMessage(null), 3000);
     } catch (err: any) {
       setError(err.message);
@@ -121,7 +125,8 @@ const Stores: React.FC = () => {
       direccion: store.direccion,
       ciudad: store.ciudad,
       telefono: store.telefono || '',
-      meta_mensual: store.meta_mensual
+      meta_mensual: store.meta_mensual,
+      zona: store.zona || ''
     });
     setIsModalOpen(true);
   };
@@ -173,15 +178,38 @@ const Stores: React.FC = () => {
 
   return (
     <div className="py-6 px-6">
-      <div className="flex justify-between items-center mb-6 mt-6">
+      <div className="flex justify-between items-center mb-4 mt-6">
         <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-200">Tiendas</h1>
         <Button onClick={() => {
           setEditingStore(null);
-          setFormData({ nombre: '', direccion: '', ciudad: '', telefono: '', meta_mensual: 0 });
+          setFormData({ nombre: '', direccion: '', ciudad: '', telefono: '', meta_mensual: 0, zona: '' as '' | 'norte' | 'sur' });
           setIsModalOpen(true);
         }}>
           Crear Nueva Tienda
         </Button>
+      </div>
+
+      <div className="flex gap-2 mb-6">
+        {(['todas', 'norte', 'sur'] as const).map(zona => (
+          <button
+            key={zona}
+            onClick={() => setZonaFilter(zona)}
+            className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${
+              zonaFilter === zona
+                ? zona === 'norte'
+                  ? 'bg-blue-600 text-white'
+                  : zona === 'sur'
+                  ? 'bg-orange-500 text-white'
+                  : 'bg-gray-700 text-white dark:bg-gray-200 dark:text-gray-800'
+                : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600'
+            }`}
+          >
+            {zona === 'todas' ? 'Todas' : `Zona ${zona.charAt(0).toUpperCase() + zona.slice(1)}`}
+            <span className="ml-1.5 text-xs opacity-75">
+              ({zona === 'todas' ? stores.length : stores.filter(s => s.zona === zona).length})
+            </span>
+          </button>
+        ))}
       </div>
 
       {successMessage && (
@@ -196,10 +224,21 @@ const Stores: React.FC = () => {
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {stores.map(store => (
+        {stores.filter(s => zonaFilter === 'todas' || s.zona === zonaFilter).map(store => (
           <Card key={store.id_tienda} className="p-4">
             <div className="flex justify-between items-start mb-2">
-              <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200">{store.nombre}</h3>
+              <div>
+                <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200">{store.nombre}</h3>
+                {store.zona && (
+                  <span className={`inline-block text-xs font-medium px-2 py-0.5 rounded-full mt-1 ${
+                    store.zona === 'norte'
+                      ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+                      : 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400'
+                  }`}>
+                    Zona {store.zona.charAt(0).toUpperCase() + store.zona.slice(1)}
+                  </span>
+                )}
+              </div>
               <div className="flex gap-2">
                 <button
                   onClick={() => handleEdit(store)}
@@ -237,7 +276,7 @@ const Stores: React.FC = () => {
         onClose={() => {
           setIsModalOpen(false);
           setEditingStore(null);
-          setFormData({ nombre: '', direccion: '', ciudad: '', telefono: '', meta_mensual: 0 });
+          setFormData({ nombre: '', direccion: '', ciudad: '', telefono: '', meta_mensual: 0, zona: '' as '' | 'norte' | 'sur' });
         }}
         title={editingStore ? 'Editar Tienda' : 'Crear Nueva Tienda'}
       >
@@ -313,13 +352,29 @@ const Stores: React.FC = () => {
             />
           </div>
 
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              Zona
+            </label>
+            <select
+              name="zona"
+              value={formData.zona}
+              onChange={handleInputChange}
+              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 rounded-md focus:outline-none focus:ring-1 focus:ring-primary-500"
+            >
+              <option value="">Sin zona asignada</option>
+              <option value="norte">Zona Norte</option>
+              <option value="sur">Zona Sur</option>
+            </select>
+          </div>
+
           <div className="flex justify-end gap-2 mt-6">
             <Button
               variant="secondary"
               onClick={() => {
                 setIsModalOpen(false);
                 setEditingStore(null);
-                setFormData({ nombre: '', direccion: '', ciudad: '', telefono: '', meta_mensual: 0 });
+                setFormData({ nombre: '', direccion: '', ciudad: '', telefono: '', meta_mensual: 0, zona: '' as '' | 'norte' | 'sur' });
               }}
               type="button"
             >

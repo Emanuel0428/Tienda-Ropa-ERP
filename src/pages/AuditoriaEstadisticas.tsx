@@ -67,25 +67,33 @@ const AuditoriaEstadisticas = () => {
       // 3. Auditorías por mes (últimos 6 meses)
       const auditoriasPorMes = calcularAuditoriasPorMes(auditorias || []);
 
-      // 4. Estadísticas por categorías
+      // 4. Estadísticas por categorías — join correcto con respuestas y categorias
       const { data: preguntasStats } = await supabase
         .from('auditoria_preguntas')
         .select(`
-          respuesta,
-          pregunta_id,
-          preguntas (
-            categoria_id,
-            categorias (
-              nombre
-            )
-          )
+          id_auditoria_pregunta,
+          id_categoria,
+          categorias ( nombre ),
+          respuestas ( respuesta )
         `);
 
       const estadisticasCategorias = calcularEstadisticasCategorias(preguntasStats || []);
 
-      // 5. Auditoría más reciente
-      const auditoriaReciente = auditorias
-        ?.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0] || null;
+      // 5. Auditoría más reciente con nombre de tienda
+      const auditoriasOrdenadas = [...(auditorias || [])].sort(
+        (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      );
+      const auditoriaRecienteRaw = auditoriasOrdenadas[0] || null;
+
+      let auditoriaReciente = auditoriaRecienteRaw;
+      if (auditoriaRecienteRaw) {
+        const { data: tiendaData } = await supabase
+          .from('tiendas')
+          .select('nombre')
+          .eq('id_tienda', auditoriaRecienteRaw.id_tienda)
+          .single();
+        auditoriaReciente = { ...auditoriaRecienteRaw, nombre_tienda: tiendaData?.nombre || `Tienda #${auditoriaRecienteRaw.id_tienda}` };
+      }
 
       setEstadisticas({
         totalAuditorias,
@@ -135,14 +143,16 @@ const AuditoriaEstadisticas = () => {
     const categorias: { [key: string]: { total: number; aprobadas: number } } = {};
 
     preguntasData.forEach(pregunta => {
-      if (pregunta.preguntas?.categorias?.nombre) {
-        const categoria = pregunta.preguntas.categorias.nombre;
-        if (!categorias[categoria]) {
-          categorias[categoria] = { total: 0, aprobadas: 0 };
+      const nombreCategoria = pregunta.categorias?.nombre;
+      // Solo contar preguntas que tienen respuesta registrada
+      const respuesta = pregunta.respuestas?.[0]?.respuesta;
+      if (nombreCategoria && respuesta !== undefined && respuesta !== null) {
+        if (!categorias[nombreCategoria]) {
+          categorias[nombreCategoria] = { total: 0, aprobadas: 0 };
         }
-        categorias[categoria].total++;
-        if (pregunta.respuesta === 'si') {
-          categorias[categoria].aprobadas++;
+        categorias[nombreCategoria].total++;
+        if (respuesta === true) {
+          categorias[nombreCategoria].aprobadas++;
         }
       }
     });
@@ -323,7 +333,9 @@ const AuditoriaEstadisticas = () => {
             Categorías con Mejor Rendimiento
           </h3>
           <div className="space-y-3">
-            {estadisticas.categoriasMejorPuntuadas.map((categoria, index) => (
+            {estadisticas.categoriasMejorPuntuadas.length === 0 ? (
+              <p className="text-sm text-gray-500 text-center py-4">Sin datos suficientes</p>
+            ) : estadisticas.categoriasMejorPuntuadas.map((categoria, index) => (
               <div key={index} className="flex items-center justify-between p-3 bg-green-50 rounded-lg">
                 <span className="font-medium text-gray-800">{categoria.categoria}</span>
                 <Badge variant="success">{Math.round(categoria.promedio)}%</Badge>
@@ -339,7 +351,9 @@ const AuditoriaEstadisticas = () => {
             Categorías que Necesitan Atención
           </h3>
           <div className="space-y-3">
-            {estadisticas.categoriasPeorPuntuadas.map((categoria, index) => (
+            {estadisticas.categoriasPeorPuntuadas.length === 0 ? (
+              <p className="text-sm text-gray-500 text-center py-4">Sin datos suficientes</p>
+            ) : estadisticas.categoriasPeorPuntuadas.map((categoria, index) => (
               <div key={index} className="flex items-center justify-between p-3 bg-red-50 rounded-lg">
                 <span className="font-medium text-gray-800">{categoria.categoria}</span>
                 <Badge variant="error">{Math.round(categoria.promedio)}%</Badge>
@@ -361,7 +375,7 @@ const AuditoriaEstadisticas = () => {
               <div className="flex items-center gap-2">
                 <MapPin className="w-4 h-4 text-gray-500" />
                 <span className="font-medium">
-                  Auditoría {estadisticas.auditoriaReciente.id_auditoria_custom || `#${estadisticas.auditoriaReciente.id_auditoria}`}
+                  {estadisticas.auditoriaReciente.nombre_tienda || `Tienda #${estadisticas.auditoriaReciente.id_tienda}`}
                 </span>
               </div>
               <div className="flex items-center gap-2">

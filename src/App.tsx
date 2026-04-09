@@ -142,9 +142,9 @@ function App() {
               </CoordinadorRoute>
             } />
             <Route path="/statistics" element={
-              <AdminRoute>
+              <CoordinadorRoute>
                 <Statistics />
-              </AdminRoute>
+              </CoordinadorRoute>
             } />
             <Route path="/auditoria" element={
               <AuditorRoute><Auditoria /></AuditorRoute>

@@ -597,84 +597,75 @@ export const useAudit = () => {
   const comentarioTimeoutRef = useRef<Record<number, NodeJS.Timeout>>({});
   const accionCorrectivaTimeoutRef = useRef<Record<number, NodeJS.Timeout>>({});
 
-  const handleComentarioChange = (id_auditoria_pregunta: number, comentario: string) => {
-    // Actualizar estado local inmediatamente (para la UI)
-    const respuestaActual = respuestas.get(id_auditoria_pregunta);
-    if (respuestaActual) {
-      const nuevaRespuesta = { ...respuestaActual, comentario };
-      setRespuestas(prev => new Map(prev.set(id_auditoria_pregunta, nuevaRespuesta)));
-
-      // También actualizar categorias para que el textarea refleje el cambio inmediato
-      setCategorias(prev =>
-        prev.map(categoria => ({
-          ...categoria,
-          subcategorias: categoria.subcategorias.map(subcategoria => ({
-            ...subcategoria,
-            preguntas: subcategoria.preguntas.map(pregunta =>
-              pregunta.id_auditoria_pregunta === id_auditoria_pregunta
-                ? { ...pregunta, respuesta: nuevaRespuesta }
-                : pregunta
-            )
-          }))
-        }))
-      );
-
-      // Limpiar timeout anterior si existe
-      if (comentarioTimeoutRef.current[id_auditoria_pregunta]) {
-        clearTimeout(comentarioTimeoutRef.current[id_auditoria_pregunta]);
+  // Helper: busca la respuesta en categorias como fallback cuando el Map está desincronizado
+  const getRespuestaFallback = (id_auditoria_pregunta: number) => {
+    for (const cat of categorias) {
+      for (const sub of cat.subcategorias) {
+        const preg = sub.preguntas.find(p => p.id_auditoria_pregunta === id_auditoria_pregunta);
+        if (preg?.respuesta) return preg.respuesta;
       }
-
-      // Establecer nuevo timeout para guardar después de 1 segundo sin escribir
-      comentarioTimeoutRef.current[id_auditoria_pregunta] = setTimeout(async () => {
-        await guardarRespuesta(
-          id_auditoria_pregunta,
-          respuestaActual.respuesta,
-          comentario,
-          respuestaActual.accion_correctiva
-        );
-        delete comentarioTimeoutRef.current[id_auditoria_pregunta];
-      }, 1000);
     }
+    return null;
+  };
+
+  const updateCategoriasConRespuesta = (id_auditoria_pregunta: number, nuevaRespuesta: Respuesta) => {
+    setCategorias(prev =>
+      prev.map(categoria => ({
+        ...categoria,
+        subcategorias: categoria.subcategorias.map(subcategoria => ({
+          ...subcategoria,
+          preguntas: subcategoria.preguntas.map(pregunta =>
+            pregunta.id_auditoria_pregunta === id_auditoria_pregunta
+              ? { ...pregunta, respuesta: nuevaRespuesta }
+              : pregunta
+          )
+        }))
+      }))
+    );
+  };
+
+  const handleComentarioChange = (id_auditoria_pregunta: number, comentario: string) => {
+    const respuestaActual = respuestas.get(id_auditoria_pregunta) ?? getRespuestaFallback(id_auditoria_pregunta);
+    if (!respuestaActual) return;
+
+    const nuevaRespuesta = { ...respuestaActual, comentario };
+    setRespuestas(prev => new Map(prev.set(id_auditoria_pregunta, nuevaRespuesta)));
+    updateCategoriasConRespuesta(id_auditoria_pregunta, nuevaRespuesta);
+
+    if (comentarioTimeoutRef.current[id_auditoria_pregunta]) {
+      clearTimeout(comentarioTimeoutRef.current[id_auditoria_pregunta]);
+    }
+    comentarioTimeoutRef.current[id_auditoria_pregunta] = setTimeout(async () => {
+      await guardarRespuesta(
+        id_auditoria_pregunta,
+        respuestaActual.respuesta,
+        comentario,
+        respuestaActual.accion_correctiva
+      );
+      delete comentarioTimeoutRef.current[id_auditoria_pregunta];
+    }, 1000);
   };
 
   const handleAccionCorrectivaChange = (id_auditoria_pregunta: number, accionCorrectiva: string) => {
-    // Actualizar estado local inmediatamente (para la UI)
-    const respuestaActual = respuestas.get(id_auditoria_pregunta);
-    if (respuestaActual) {
-      const nuevaRespuesta = { ...respuestaActual, accion_correctiva: accionCorrectiva };
-      setRespuestas(prev => new Map(prev.set(id_auditoria_pregunta, nuevaRespuesta)));
+    const respuestaActual = respuestas.get(id_auditoria_pregunta) ?? getRespuestaFallback(id_auditoria_pregunta);
+    if (!respuestaActual) return;
 
-      // También actualizar categorias para que el textarea refleje el cambio inmediato
-      setCategorias(prev =>
-        prev.map(categoria => ({
-          ...categoria,
-          subcategorias: categoria.subcategorias.map(subcategoria => ({
-            ...subcategoria,
-            preguntas: subcategoria.preguntas.map(pregunta =>
-              pregunta.id_auditoria_pregunta === id_auditoria_pregunta
-                ? { ...pregunta, respuesta: nuevaRespuesta }
-                : pregunta
-            )
-          }))
-        }))
-      );
+    const nuevaRespuesta = { ...respuestaActual, accion_correctiva: accionCorrectiva };
+    setRespuestas(prev => new Map(prev.set(id_auditoria_pregunta, nuevaRespuesta)));
+    updateCategoriasConRespuesta(id_auditoria_pregunta, nuevaRespuesta);
 
-      // Limpiar timeout anterior si existe
-      if (accionCorrectivaTimeoutRef.current[id_auditoria_pregunta]) {
-        clearTimeout(accionCorrectivaTimeoutRef.current[id_auditoria_pregunta]);
-      }
-
-      // Establecer nuevo timeout para guardar después de 1 segundo sin escribir
-      accionCorrectivaTimeoutRef.current[id_auditoria_pregunta] = setTimeout(async () => {
-        await guardarRespuesta(
-          id_auditoria_pregunta,
-          respuestaActual.respuesta,
-          respuestaActual.comentario,
-          accionCorrectiva
-        );
-        delete accionCorrectivaTimeoutRef.current[id_auditoria_pregunta];
-      }, 1000);
+    if (accionCorrectivaTimeoutRef.current[id_auditoria_pregunta]) {
+      clearTimeout(accionCorrectivaTimeoutRef.current[id_auditoria_pregunta]);
     }
+    accionCorrectivaTimeoutRef.current[id_auditoria_pregunta] = setTimeout(async () => {
+      await guardarRespuesta(
+        id_auditoria_pregunta,
+        respuestaActual.respuesta,
+        respuestaActual.comentario,
+        accionCorrectiva
+      );
+      delete accionCorrectivaTimeoutRef.current[id_auditoria_pregunta];
+    }, 1000);
   };
 
   // Obtener lista de auditorías anteriores por tienda

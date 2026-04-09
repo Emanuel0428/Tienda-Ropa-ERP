@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { Bell, Search, ChevronDown, LogOut, Settings, User as UserIcon, Clock } from 'lucide-react';
 import { User } from '../../types';
 import { supabase } from '../../supabaseClient';
+import { getStoreSchedule, getActiveAttendanceStatus } from '../../services/attendanceService';
+import { isLateForDeadline } from '../../hooks/useAttendanceUtils';
 
 interface HeaderProps {
   user: User | null;
@@ -54,42 +56,20 @@ const Header: React.FC<HeaderProps> = ({ user, onLogout }) => {
       const { data: { user: authUser } } = await supabase.auth.getUser();
       if (!authUser) return;
 
-      // Obtener datos del usuario
       const { data: userData, error: userError } = await supabase
         .from('usuarios')
         .select('id_usuario, id_tienda')
         .eq('id', authUser.id)
         .single();
-
       if (userError) return;
 
-      // Obtener configuración de horario de la tienda
-      const { data: schedule, error: scheduleError } = await supabase
-        .from('store_schedules')
-        .select('check_in_deadline')
-        .eq('id_tienda', userData.id_tienda)
-        .single();
+      const [schedule, hasActiveRecord] = await Promise.all([
+        getStoreSchedule(userData.id_tienda),
+        getActiveAttendanceStatus(userData.id_usuario),
+      ]);
 
-      if (scheduleError) return;
-
-      // Verificar si ya dio entrada hoy
-      const today = new Date().toISOString().split('T')[0];
-      const { data: todayRecord } = await supabase
-        .from('attendance_records')
-        .select('id')
-        .eq('id_usuario', userData.id_usuario)
-        .gte('check_in', `${today}T00:00:00`)
-        .is('check_out', null)
-        .maybeSingle();
-
-      // Si no ha dado entrada y ya pasó la hora límite, mostrar notificación
-      if (!todayRecord && schedule?.check_in_deadline) {
-        const now = new Date();
-        const [hours, minutes] = schedule.check_in_deadline.split(':');
-        const deadline = new Date();
-        deadline.setHours(parseInt(hours), parseInt(minutes), 0);
-
-        setShowLateNotification(now > deadline);
+      if (!hasActiveRecord && schedule?.check_in_deadline) {
+        setShowLateNotification(isLateForDeadline(schedule.check_in_deadline));
       } else {
         setShowLateNotification(false);
       }

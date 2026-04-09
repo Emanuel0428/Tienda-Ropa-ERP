@@ -5,26 +5,9 @@ import { Modal } from '../components/ui/Modal';
 import { Clock, Users, Store as StoreIcon, RefreshCw, FileText } from 'lucide-react';
 import { Button } from '../components/ui/Button';
 import { supabase } from '../supabaseClient';
-
-interface ActiveEmployee {
-  id_usuario: number;
-  nombre: string;
-  rol: string;
-  check_in: string;
-  duration: string;
-  wifi_verified: boolean;
-  isLate: boolean;
-  expectedTime: string | null;
-  late_note?: string | null;
-  attendance_id: number;
-}
-
-interface StoreAttendance {
-  id_tienda: number;
-  nombre_tienda: string;
-  activeEmployees: ActiveEmployee[];
-  totalActive: number;
-}
+import { getAllStores, getActiveRecordsByStore, getSchedulesByDateForEmployees, updateLateNote } from '../services/attendanceService';
+import { calculateDuration, formatTime } from '../hooks/useAttendanceUtils';
+import type { ActiveEmployee, StoreAttendance } from '../types/attendance';
 
 const AttendanceMonitor: React.FC = () => {
   const [storesData, setStoresData] = useState<StoreAttendance[]>([]);
@@ -36,30 +19,11 @@ const AttendanceMonitor: React.FC = () => {
   const [lateNote, setLateNote] = useState('');
   const [savingNote, setSavingNote] = useState(false);
 
-  useEffect(() => {
-    checkUserRole();
-  }, []);
-
-  useEffect(() => {
-    if (userRole === 'admin' || userRole === 'coordinador') {
-      loadAttendanceData();
-      // Actualizar cada 5 minutos en lugar de cada minuto
-      const interval = setInterval(loadAttendanceData, 300000);
-      return () => clearInterval(interval);
-    }
-  }, [userRole]);
-
   const checkUserRole = useCallback(async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
-
-      const { data, error } = await supabase
-        .from('usuarios')
-        .select('rol')
-        .eq('id', user.id)
-        .single();
-
+      const { data, error } = await supabase.from('usuarios').select('rol').eq('id', user.id).single();
       if (error) throw error;
       setUserRole(data.rol);
     } catch (error) {
@@ -67,105 +31,48 @@ const AttendanceMonitor: React.FC = () => {
     }
   }, []);
 
-  const calculateDuration = useCallback((checkInTime: Date): string => {
-    const now = new Date();
-    const diff = now.getTime() - checkInTime.getTime();
-    const hours = Math.floor(diff / (1000 * 60 * 60));
-    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-    return `${hours}h ${minutes}m`;
-  }, []);
-
   const loadAttendanceData = useCallback(async () => {
     setIsLoading(true);
     try {
-      // Obtener todas las tiendas
-      const { data: tiendas, error: tiendasError } = await supabase
-        .from('tiendas')
-        .select('id_tienda, nombre')
-        .order('nombre');
-
-      if (tiendasError) throw tiendasError;
-
-      // Para cada tienda, obtener empleados activos
       const today = new Date().toISOString().split('T')[0];
-      
+      const tiendas = await getAllStores();
+
       const storesAttendance: StoreAttendance[] = await Promise.all(
-        (tiendas || []).map(async (tienda) => {
-          const { data: activeRecords, error } = await supabase
-            .from('attendance_records')
-            .select(`
-              id,
-              id_usuario,
-              check_in,
-              wifi_verified,
-              late_note,
-              usuarios!inner(
-                id_usuario,
-                nombre,
-                rol
-              )
-            `)
-            .eq('id_tienda', tienda.id_tienda)
-            .gte('check_in', `${today}T00:00:00`)
-            .is('check_out', null)
-            .order('check_in', { ascending: false });
+        tiendas.map(async (tienda) => {
+          const activeRecords = await getActiveRecordsByStore(tienda.id_tienda, today).catch(() => []);
+          const userIds = activeRecords.map((r: any) => r.id_usuario);
+          const schedules = await getSchedulesByDateForEmployees(userIds, today).catch(() => []);
+          const schedulesMap = new Map(schedules.map(s => [s.id_usuario, s]));
 
-          if (error) {
-            console.error(`Error cargando asistencia de tienda ${tienda.nombre}:`, error);
-            return {
-              id_tienda: tienda.id_tienda,
-              nombre_tienda: tienda.nombre,
-              activeEmployees: [],
-              totalActive: 0
-            };
-          }
-
-          // Cargar horarios individuales para hoy
-          const { data: schedules } = await supabase
-            .from('employee_schedules')
-            .select('id_usuario, check_in_deadline, is_day_off')
-            .eq('schedule_date', today)
-            .in('id_usuario', (activeRecords || []).map(r => r.id_usuario));
-
-          const schedulesMap = new Map(
-            (schedules || []).map(s => [s.id_usuario, s])
-          );
-
-          const employees: ActiveEmployee[] = (activeRecords || []).map(record => {
+          const employees: ActiveEmployee[] = activeRecords.map((record: any) => {
             const checkInTime = new Date(record.check_in);
             const schedule = schedulesMap.get(record.id_usuario);
-            
             let isLate = false;
             let expectedTime: string | null = null;
-            
+
             if (schedule && !schedule.is_day_off) {
               expectedTime = schedule.check_in_deadline;
-              const [hours, minutes] = schedule.check_in_deadline.split(':');
+              const [hours, minutes] = schedule.check_in_deadline.split(':').map(Number);
               const deadline = new Date(checkInTime);
-              deadline.setHours(parseInt(hours), parseInt(minutes), 0, 0);
+              deadline.setHours(hours, minutes, 0, 0);
               isLate = checkInTime > deadline;
             }
-            
+
             return {
               id_usuario: record.id_usuario,
-              nombre: (record.usuarios as any).nombre,
-              rol: (record.usuarios as any).rol,
+              nombre: record.usuarios.nombre,
+              rol: record.usuarios.rol,
               check_in: record.check_in,
-              duration: calculateDuration(checkInTime),
+              duration: calculateDuration(checkInTime.toISOString(), null),
               wifi_verified: record.wifi_verified,
               isLate,
               expectedTime,
-              late_note: record.late_note || null,
-              attendance_id: record.id
+              late_note: record.late_note ?? null,
+              attendance_id: record.id,
             };
           });
 
-          return {
-            id_tienda: tienda.id_tienda,
-            nombre_tienda: tienda.nombre,
-            activeEmployees: employees,
-            totalActive: employees.length
-          };
+          return { id_tienda: tienda.id_tienda, nombre_tienda: tienda.nombre, activeEmployees: employees, totalActive: employees.length };
         })
       );
 
@@ -175,23 +82,6 @@ const AttendanceMonitor: React.FC = () => {
       console.error('Error cargando datos de asistencia:', error);
     } finally {
       setIsLoading(false);
-    }
-  }, [calculateDuration]);
-
-  const formatTime = useCallback((dateString: string) => {
-    return new Date(dateString).toLocaleTimeString('es-CO', { 
-      hour: '2-digit', 
-      minute: '2-digit' 
-    });
-  }, []);
-
-  const getRoleBadgeVariant = useCallback((role: string) => {
-    switch (role) {
-      case 'admin': return 'error';
-      case 'coordinador': return 'warning';
-      case 'asesora': return 'success';
-      case 'auditor': return 'info';
-      default: return 'default';
     }
   }, []);
 
@@ -203,17 +93,9 @@ const AttendanceMonitor: React.FC = () => {
 
   const handleSaveNote = async () => {
     if (!selectedEmployee) return;
-    
     setSavingNote(true);
     try {
-      const { error } = await supabase
-        .from('attendance_records')
-        .update({ late_note: lateNote.trim() || null })
-        .eq('id', selectedEmployee.attendance_id);
-
-      if (error) throw error;
-
-      // Actualizar datos localmente
+      await updateLateNote(selectedEmployee.attendance_id, lateNote.trim() || null);
       await loadAttendanceData();
       setShowNoteModal(false);
       setSelectedEmployee(null);
@@ -226,14 +108,29 @@ const AttendanceMonitor: React.FC = () => {
     }
   };
 
+  const getRoleBadgeVariant = (role: string) => {
+    const map: Record<string, 'error' | 'warning' | 'success' | 'info' | 'default'> = {
+      admin: 'error', coordinador: 'warning', asesora: 'success', auditor: 'info',
+    };
+    return map[role] ?? 'default';
+  };
+
+  useEffect(() => { checkUserRole(); }, [checkUserRole]);
+
+  useEffect(() => {
+    if (userRole === 'admin' || userRole === 'coordinador') {
+      loadAttendanceData();
+      const interval = setInterval(loadAttendanceData, 300_000);
+      return () => clearInterval(interval);
+    }
+  }, [userRole, loadAttendanceData]);
+
   if (userRole !== 'admin' && userRole !== 'coordinador') {
     return (
       <div className="min-h-screen bg-gray-50 pt-24 pb-6 px-4 lg:px-8">
         <Card className="max-w-2xl mx-auto text-center py-12">
           <h2 className="text-2xl font-bold text-gray-900 mb-4">Acceso Restringido</h2>
-          <p className="text-gray-600">
-            Solo coordinadores y administradores pueden acceder a esta página.
-          </p>
+          <p className="text-gray-600">Solo coordinadores y administradores pueden acceder a esta página.</p>
         </Card>
       </div>
     );
@@ -242,7 +139,6 @@ const AttendanceMonitor: React.FC = () => {
   return (
     <div className="min-h-screen bg-gray-50 pt-24 pb-6 px-4 lg:px-8">
       <div className="max-w-7xl mx-auto">
-        {/* Header */}
         <div className="mb-6 flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-3">
@@ -253,63 +149,35 @@ const AttendanceMonitor: React.FC = () => {
               Empleados activos en todas las tiendas • Última actualización: {lastUpdate.toLocaleTimeString('es-CO')}
             </p>
           </div>
-          <Button
-            onClick={loadAttendanceData}
-            disabled={isLoading}
-            variant="outline"
-            className="flex items-center gap-2"
-          >
+          <Button onClick={loadAttendanceData} disabled={isLoading} variant="outline" className="flex items-center gap-2">
             <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
             Actualizar
           </Button>
         </div>
 
-        {/* Resumen general */}
+        {/* Resumen */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
           <Card>
             <div className="flex items-center gap-4">
-              <div className="p-3 bg-primary-100 rounded-lg">
-                <StoreIcon className="w-6 h-6 text-primary-600" />
-              </div>
-              <div>
-                <p className="text-sm text-gray-600">Tiendas Activas</p>
-                <p className="text-2xl font-bold text-gray-900">
-                  {storesData.filter(s => s.totalActive > 0).length}
-                </p>
-              </div>
+              <div className="p-3 bg-primary-100 rounded-lg"><StoreIcon className="w-6 h-6 text-primary-600" /></div>
+              <div><p className="text-sm text-gray-600">Tiendas Activas</p><p className="text-2xl font-bold text-gray-900">{storesData.filter(s => s.totalActive > 0).length}</p></div>
             </div>
           </Card>
-          
           <Card>
             <div className="flex items-center gap-4">
-              <div className="p-3 bg-green-100 rounded-lg">
-                <Users className="w-6 h-6 text-green-600" />
-              </div>
-              <div>
-                <p className="text-sm text-gray-600">Empleados Activos</p>
-                <p className="text-2xl font-bold text-gray-900">
-                  {storesData.reduce((sum, store) => sum + store.totalActive, 0)}
-                </p>
-              </div>
+              <div className="p-3 bg-green-100 rounded-lg"><Users className="w-6 h-6 text-green-600" /></div>
+              <div><p className="text-sm text-gray-600">Empleados Activos</p><p className="text-2xl font-bold text-gray-900">{storesData.reduce((s, store) => s + store.totalActive, 0)}</p></div>
             </div>
           </Card>
-          
           <Card>
             <div className="flex items-center gap-4">
-              <div className="p-3 bg-blue-100 rounded-lg">
-                <Clock className="w-6 h-6 text-blue-600" />
-              </div>
-              <div>
-                <p className="text-sm text-gray-600">Total Tiendas</p>
-                <p className="text-2xl font-bold text-gray-900">
-                  {storesData.length}
-                </p>
-              </div>
+              <div className="p-3 bg-blue-100 rounded-lg"><Clock className="w-6 h-6 text-blue-600" /></div>
+              <div><p className="text-sm text-gray-600">Total Tiendas</p><p className="text-2xl font-bold text-gray-900">{storesData.length}</p></div>
             </div>
           </Card>
         </div>
 
-        {/* Listado por tienda */}
+        {/* Por tienda */}
         <div className="space-y-6">
           {storesData.map((store) => (
             <Card key={store.id_tienda}>
@@ -326,33 +194,21 @@ const AttendanceMonitor: React.FC = () => {
               {store.activeEmployees.length > 0 ? (
                 <div className="space-y-3">
                   {store.activeEmployees.map((employee) => (
-                    <div
-                      key={employee.id_usuario}
-                      className="p-4 bg-gray-50 rounded-lg border border-gray-200"
-                    >
+                    <div key={employee.id_usuario} className="p-4 bg-gray-50 rounded-lg border border-gray-200">
                       <div className="flex items-start justify-between gap-4">
                         <div className="flex items-center gap-4 flex-1">
                           <div className="w-10 h-10 bg-primary-100 rounded-full flex items-center justify-center flex-shrink-0">
-                            <span className="text-primary-600 font-semibold">
-                              {employee.nombre.charAt(0).toUpperCase()}
-                            </span>
+                            <span className="text-primary-600 font-semibold">{employee.nombre.charAt(0).toUpperCase()}</span>
                           </div>
                           <div className="flex-1">
                             <p className="font-medium text-gray-900">{employee.nombre}</p>
                             <div className="flex items-center gap-2 mt-1 flex-wrap">
-                              <Badge variant={getRoleBadgeVariant(employee.rol)} size="sm">
-                                {employee.rol}
-                              </Badge>
-                              {employee.wifi_verified ? (
-                                <span className="text-xs text-green-600">✓ WiFi verificado</span>
-                              ) : (
-                                <span className="text-xs text-orange-600">⚠ Sin verificar WiFi</span>
-                              )}
-                              {employee.isLate && (
-                                <Badge variant="error" size="sm">
-                                  🕐 Llegada tarde
-                                </Badge>
-                              )}
+                              <Badge variant={getRoleBadgeVariant(employee.rol)} size="sm">{employee.rol}</Badge>
+                              {employee.wifi_verified
+                                ? <span className="text-xs text-green-600">✓ WiFi verificado</span>
+                                : <span className="text-xs text-orange-600">⚠ Sin verificar WiFi</span>
+                              }
+                              {employee.isLate && <Badge variant="error" size="sm">🕐 Llegada tarde</Badge>}
                             </div>
                             {employee.isLate && employee.late_note && (
                               <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded text-xs">
@@ -362,24 +218,11 @@ const AttendanceMonitor: React.FC = () => {
                           </div>
                         </div>
                         <div className="text-right flex-shrink-0">
-                          <p className="text-sm font-medium text-gray-900">
-                            Entrada: {formatTime(employee.check_in)}
-                          </p>
-                          {employee.expectedTime && (
-                            <p className="text-xs text-gray-500">
-                              Hora límite: {employee.expectedTime}
-                            </p>
-                          )}
-                          <p className="text-sm text-gray-600">
-                            Duración: {employee.duration}
-                          </p>
+                          <p className="text-sm font-medium text-gray-900">Entrada: {formatTime(employee.check_in)}</p>
+                          {employee.expectedTime && <p className="text-xs text-gray-500">Hora límite: {employee.expectedTime}</p>}
+                          <p className="text-sm text-gray-600">Duración: {employee.duration}</p>
                           {employee.isLate && (
-                            <Button
-                              onClick={() => handleAddNote(employee)}
-                              size="sm"
-                              variant="outline"
-                              className="mt-2 text-xs"
-                            >
+                            <Button onClick={() => handleAddNote(employee)} size="sm" variant="outline" className="mt-2 text-xs">
                               <FileText className="w-3 h-3 mr-1" />
                               {employee.late_note ? 'Editar nota' : 'Agregar nota'}
                             </Button>
@@ -406,22 +249,15 @@ const AttendanceMonitor: React.FC = () => {
         )}
       </div>
 
-      {/* Modal para agregar/editar anotación */}
       {showNoteModal && selectedEmployee && (
         <Modal
           isOpen={showNoteModal}
-          onClose={() => {
-            setShowNoteModal(false);
-            setSelectedEmployee(null);
-            setLateNote('');
-          }}
+          onClose={() => { setShowNoteModal(false); setSelectedEmployee(null); setLateNote(''); }}
           title={`Anotación de Llegada Tarde - ${selectedEmployee.nombre}`}
         >
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Motivo de la llegada tarde
-              </label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Motivo de la llegada tarde</label>
               <textarea
                 value={lateNote}
                 onChange={(e) => setLateNote(e.target.value)}
@@ -429,30 +265,13 @@ const AttendanceMonitor: React.FC = () => {
                 rows={4}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
               />
-              <p className="text-xs text-gray-500 mt-1">
-                Esta anotación quedará registrada permanentemente en el historial de asistencia.
-              </p>
+              <p className="text-xs text-gray-500 mt-1">Esta anotación quedará registrada permanentemente.</p>
             </div>
-
             <div className="flex justify-end gap-3">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => {
-                  setShowNoteModal(false);
-                  setSelectedEmployee(null);
-                  setLateNote('');
-                }}
-                disabled={savingNote}
-              >
+              <Button variant="outline" onClick={() => { setShowNoteModal(false); setSelectedEmployee(null); setLateNote(''); }} disabled={savingNote}>
                 Cancelar
               </Button>
-              <Button
-                type="button"
-                onClick={handleSaveNote}
-                disabled={savingNote}
-                className="bg-primary-600 text-white"
-              >
+              <Button onClick={handleSaveNote} disabled={savingNote} className="bg-primary-600 text-white">
                 {savingNote ? 'Guardando...' : 'Guardar Anotación'}
               </Button>
             </div>

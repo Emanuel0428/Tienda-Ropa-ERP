@@ -123,6 +123,7 @@ const Sidebar: React.FC<SidebarProps> = ({ user }) => {
       return [
         { id: 'stores', label: 'Tiendas', icon: Store, path: '/stores' },
         { id: 'users', label: 'Usuarios', icon: Users, path: '/users' },
+        { id: 'statistics', label: 'Estadísticas', icon: BarChart, path: '/statistics' },
       ];
     }
 
@@ -140,7 +141,6 @@ const Sidebar: React.FC<SidebarProps> = ({ user }) => {
       { id: 'crear-auditoria', label: 'Crear Auditoría', icon: Plus, path: '/auditoria' },
       { id: 'historial-auditoria', label: 'Ver Historial', icon: History, path: '/auditoria/historial' },
       { id: 'preguntas-maestras', label: 'Ver Preguntas Maestras', icon: HelpCircle, path: '/preguntas-maestras' },
-      { id: 'estadisticas-auditoria', label: 'Ver Estadísticas', icon: PieChart, path: '/auditoria/estadisticas' }
     ];
   };
 

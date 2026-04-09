@@ -241,6 +241,8 @@ CREATE TABLE public.tiendas (
   id_asesora integer,
   created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
   meta_mensual numeric DEFAULT 0,
+  telefono character varying,
+  zona character varying(10) CHECK (zona IN ('norte', 'sur')),
   CONSTRAINT tiendas_pkey PRIMARY KEY (id_tienda),
   CONSTRAINT tiendas_id_admin_fkey FOREIGN KEY (id_admin) REFERENCES public.usuarios(id_usuario),
   CONSTRAINT tiendas_id_asesora_fkey FOREIGN KEY (id_asesora) REFERENCES public.usuarios(id_usuario)
