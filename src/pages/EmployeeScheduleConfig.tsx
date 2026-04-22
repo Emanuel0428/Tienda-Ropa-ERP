@@ -48,7 +48,11 @@ const EMPTY_TEMPLATE = (employee: Employee): ScheduleTemplate => ({
   sunday_time: '09:00', sunday_is_off: false,
 });
 
-const EmployeeScheduleConfig: React.FC = () => {
+interface Props {
+  embedded?: boolean;
+}
+
+const EmployeeScheduleConfig: React.FC<Props> = ({ embedded = false }) => {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
   const [currentMonth, setCurrentMonth] = useState(new Date());
@@ -245,21 +249,19 @@ const EmployeeScheduleConfig: React.FC = () => {
   // ── Render ────────────────────────────────────────────────────────────────
   if (userRole !== 'admin' && userRole !== 'coordinador') {
     return (
-      <div className="min-h-screen bg-gray-50 pt-24 pb-6 px-4 lg:px-8">
-        <Card className="max-w-2xl mx-auto text-center py-12">
-          <h2 className="text-2xl font-bold text-gray-900 mb-4">Acceso Restringido</h2>
-          <p className="text-gray-600">Solo administradores y coordinadores pueden configurar horarios individuales.</p>
-        </Card>
-      </div>
+      <Card className="max-w-2xl mx-auto text-center py-12">
+        <h2 className="text-2xl font-bold text-gray-900 mb-4">Acceso Restringido</h2>
+        <p className="text-gray-600">Solo administradores y coordinadores pueden configurar horarios individuales.</p>
+      </Card>
     );
   }
 
   const daysInMonth = getDaysInMonth();
   const monthName = currentMonth.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
 
-  return (
-    <div className="min-h-screen bg-gray-50 pt-24 pb-6 px-4 lg:px-8">
-      <div className="max-w-7xl mx-auto">
+  const content = (
+    <div className={embedded ? '' : 'max-w-7xl mx-auto'}>
+      {!embedded && (
         <div className="mb-6">
           <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-3">
             <Calendar className="w-8 h-8 text-primary-600" />
@@ -267,6 +269,7 @@ const EmployeeScheduleConfig: React.FC = () => {
           </h1>
           <p className="text-gray-600 mt-2">Configura el horario día por día de cualquier empleado</p>
         </div>
+      )}
 
         {/* Selector de empleado */}
         <Card className="mb-6">
@@ -513,6 +516,13 @@ const EmployeeScheduleConfig: React.FC = () => {
           </Modal>
         )}
       </div>
+  );
+
+  if (embedded) return content;
+
+  return (
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 pt-20 pb-6 px-4 lg:px-8">
+      {content}
     </div>
   );
 };

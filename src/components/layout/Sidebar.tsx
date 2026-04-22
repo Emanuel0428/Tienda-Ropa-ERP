@@ -26,7 +26,8 @@ import {
   HelpCircle,
   PieChart,
   Settings,
-  RefreshCw
+  RefreshCw,
+  Calendar
 } from 'lucide-react';
 import { User } from '../../types';
 
@@ -168,15 +169,15 @@ const Sidebar: React.FC<SidebarProps> = ({ user }) => {
     // Coordinador y Admin ven opciones adicionales
     if (user?.role === 'coordinador' || user?.role === 'admin') {
       options.push(
-        { id: 'monitor-asistencia', label: 'Monitor Tiendas', icon: Users, path: '/attendance-monitor' }
+        { id: 'monitor-asistencia', label: 'Monitor Tiendas', icon: Users, path: '/attendance-monitor' },
+        { id: 'gestion-horarios', label: 'Gestión de Horarios', icon: Calendar, path: '/horarios' }
       );
     }
 
-    // Solo Admin ve configuración
+    // Solo Admin ve configuración técnica
     if (user?.role === 'admin') {
       options.push(
-        { id: 'config-asistencia', label: 'Configuración GPS', icon: Settings, path: '/attendance-settings' },
-        { id: 'horarios-rotativos', label: 'Horarios Rotativos', icon: RefreshCw, path: '/rotating-schedules' }
+        { id: 'config-asistencia', label: 'Configuración GPS', icon: Settings, path: '/attendance-settings' }
       );
     }
 
@@ -301,7 +302,7 @@ const Sidebar: React.FC<SidebarProps> = ({ user }) => {
               })}
 
               {/* Sección de Documentos con desplegable */}
-              <li>
+              {user?.role !== 'administradora' && user?.role !== 'asesora' && <li>
                 <button
                   onClick={() => setDocumentosExpanded(!documentosExpanded)}
                   className={`w-full flex items-center space-x-3 px-3 py-2.5 rounded-lg text-left transition-all duration-200 ${
@@ -348,10 +349,10 @@ const Sidebar: React.FC<SidebarProps> = ({ user }) => {
                     })}
                   </ul>
                 )}
-              </li>
+              </li>}
 
               {/* Sección de Asistencia con desplegable */}
-              <li>
+              {user?.role !== 'administradora' && user?.role !== 'asesora' && <li>
                 <button
                   onClick={() => setAsistenciaExpanded(!asistenciaExpanded)}
                   className={`w-full flex items-center space-x-3 px-3 py-2.5 rounded-lg text-left transition-all duration-200 ${
@@ -398,9 +399,25 @@ const Sidebar: React.FC<SidebarProps> = ({ user }) => {
                     })}
                   </ul>
                 )}
-              </li>
+              </li>}
 
-              {/* Sección de Auditoría con desplegable */}
+              {/* Mis Auditorías — solo administradora y asesora */}
+              {(user?.role === 'administradora' || user?.role === 'asesora') && (
+                <li>
+                  <button
+                    onClick={() => handleNavigation('/mis-auditorias')}
+                    className={`w-full flex items-center space-x-3 px-3 py-2.5 rounded-lg text-left transition-all duration-200 ${
+                      isActiveRoute('/mis-auditorias')
+                        ? 'bg-primary-50 text-primary-700 border-r-2 border-primary-600 shadow-sm'
+                        : 'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-primary-600 dark:hover:text-primary-400'
+                    }`}
+                  >
+                    <FileText className={`w-5 h-5 ${isActiveRoute('/mis-auditorias') ? 'text-primary-600' : 'text-gray-500'}`} />
+                    <span className="font-medium text-sm">Mis Auditorías</span>
+                  </button>
+                </li>
+              )}
+
               {canViewAuditoria() && (
                 <li>
                   {/* Botón principal de Auditoría */}

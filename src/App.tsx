@@ -22,6 +22,8 @@ import AttendanceMonitor from './pages/AttendanceMonitor';
 import AttendanceSettings from './pages/AttendanceSettings';
 import RotatingSchedules from './pages/RotatingSchedules';
 import MySchedule from './pages/MySchedule';
+import Horarios from './pages/Horarios';
+import MisAuditorias from './pages/MisAuditorias';
 import Auth from './pages/Auth';
 import Profile from './pages/Profile';
 import Settings from './pages/Settings';
@@ -111,6 +113,7 @@ function App() {
             <Route path="/camera-capture" element={<CameraCapture />} />
             <Route path="/attendance" element={<Attendance />} />
             <Route path="/my-schedule" element={<MySchedule />} />
+            <Route path="/mis-auditorias" element={<MisAuditorias />} />
             <Route path="/attendance-monitor" element={
               <CoordinadorRoute>
                 <AttendanceMonitor />
@@ -125,6 +128,11 @@ function App() {
               <AdminRoute>
                 <RotatingSchedules />
               </AdminRoute>
+            } />
+            <Route path="/horarios" element={
+              <CoordinadorRoute>
+                <Horarios />
+              </CoordinadorRoute>
             } />
             <Route path="/tasks" element={<Tasks />} />
             <Route path="/sales" element={<Sales />} />
