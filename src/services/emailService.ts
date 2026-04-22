@@ -100,14 +100,20 @@ export const enviarNotificacionAuditoriaCompletada = async (
     return { success: true };
 
   } catch (error: any) {
-    let mensajeError = 'Error inesperado al enviar email';
-    if (error.status === 400) mensajeError = 'Configuración del template inválida';
-    else if (error.status === 401) mensajeError = 'Clave pública de EmailJS incorrecta';
-    else if (error.status === 403) mensajeError = 'Sin permisos para enviar emails';
-    else if (error.status === 412) mensajeError = 'Precondición fallida — verifica el template ID y service ID';
-    else if (error.status === 413) mensajeError = 'Contenido del email demasiado grande';
+    const esErrorRed = error instanceof TypeError && error.message.includes('fetch');
+    let mensajeError = esErrorRed
+      ? 'Sin conexión — el correo no se envió pero la auditoría quedó guardada'
+      : 'Error inesperado al enviar email';
 
-    console.error('Error enviando email de auditoría:', mensajeError, { auditoriaId: datos.auditoria_id });
+    if (!esErrorRed) {
+      if (error.status === 400) mensajeError = 'Configuración del template inválida';
+      else if (error.status === 401) mensajeError = 'Clave pública de EmailJS incorrecta';
+      else if (error.status === 403) mensajeError = 'Sin permisos para enviar emails';
+      else if (error.status === 412) mensajeError = 'Precondición fallida — verifica el template ID y service ID';
+      else if (error.status === 413) mensajeError = 'Contenido del email demasiado grande';
+    }
+
+    console.warn('Email no enviado:', mensajeError, { auditoriaId: datos.auditoria_id });
     return { success: false, error: mensajeError };
   }
 };

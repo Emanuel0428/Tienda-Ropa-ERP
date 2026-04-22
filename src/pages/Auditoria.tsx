@@ -131,14 +131,14 @@ const Auditoria = () => {
     cargarTiendasDisponibles();
   }, []);
 
-  // Cargar notas específicas cuando se carga una auditoría existente
+  // Cargar notas cuando se carga una auditoría existente (cualquier modo)
   useEffect(() => {
-    if (auditoriaActual && modoRevision) {
+    if (auditoriaActual) {
       setNotasPersonal(auditoriaActual.notas_personal || '');
       setNotasCampanas(auditoriaActual.notas_campanas || '');
       setConclusiones(auditoriaActual.notas_conclusiones || '');
     }
-  }, [auditoriaActual, modoRevision]);
+  }, [auditoriaActual?.id_auditoria]);
 
 
   // Guardar notas automáticamente cuando cambien (con debounce)
@@ -663,26 +663,30 @@ const Auditoria = () => {
       const empleadas = await obtenerEmailsEmpleadasTienda(datosAuditoria.id_tienda);
       const destinatarios = [...new Set(['fmartinezt@gmail.com', ...empleadas])];
 
-      const emailPrincipal = destinatarios[0];
-      const resultado = await enviarNotificacionAuditoriaCompletada({ ...datosEmail, to_email: emailPrincipal });
+      // Enviar a todos los destinatarios — errores de red no bloquean el flujo
+      const resultados = await Promise.allSettled(
+        destinatarios.map(email =>
+          enviarNotificacionAuditoriaCompletada({ ...datosEmail, to_email: email })
+        )
+      );
 
-      if (resultado.success) {
+      const algunExito = resultados.some(
+        r => r.status === 'fulfilled' && r.value.success
+      );
+
+      if (algunExito) {
         setShowSuccessMessage(true);
         setTimeout(() => setShowSuccessMessage(false), 4000);
-
-        destinatarios.slice(1).forEach(async (email) => {
-          try {
-            await enviarNotificacionAuditoriaCompletada({ ...datosEmail, to_email: email });
-          } catch (error) {
-            console.error('Error enviando notificación a:', email, error);
-          }
-        });
       } else {
-        console.error('Error enviando notificación de auditoría:', resultado.error);
+        // Todos fallaron — mostrar igual el mensaje de auditoría completada
+        // (la auditoría ya quedó guardada, solo el correo falló)
+        setShowSuccessMessage(true);
+        setTimeout(() => setShowSuccessMessage(false), 4000);
+        console.warn('Correos no enviados (posible falta de conexión). La auditoría quedó guardada.');
       }
 
     } catch (error) {
-      console.error('Error enviando notificaciones de auditoría:', error);
+      console.warn('No se pudieron enviar notificaciones:', error);
     }
   };
 
