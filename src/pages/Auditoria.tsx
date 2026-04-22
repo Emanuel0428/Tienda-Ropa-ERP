@@ -10,9 +10,9 @@ import { supabase } from '../supabaseClient';
 import type { Auditoria, Respuesta } from '../types/audit';
 import GestorFotos from '../components/GestorFotos';
 import { obtenerConteoFotos, obtenerFotosAuditoria, AuditoriaFoto } from '../services/imageService';
-import { 
-  enviarNotificacionAuditoriaCompletada, 
-  obtenerDestinatariosNotificacion,
+import {
+  enviarNotificacionAuditoriaCompletada,
+  obtenerEmailsEmpleadasTienda,
   formatearFechaEmail,
   CategoriaResumen,
   FotoResumen 
@@ -145,13 +145,9 @@ const Auditoria = () => {
   useEffect(() => {
     if (!auditoriaActual || isLoading) return;
 
-    // Solo guardar si hay contenido y no estamos en el proceso inicial de carga
-    const hayContenido = notasPersonal.trim() || notasCampanas.trim() || conclusiones.trim();
-    if (!hayContenido) return;
-
     const timeoutId = setTimeout(() => {
       guardarNotasAutomaticamente();
-    }, 2000); // Esperar 2 segundos después del último cambio
+    }, 1500);
 
     return () => clearTimeout(timeoutId);
   }, [notasPersonal, notasCampanas, conclusiones, auditoriaActual?.id_auditoria, isLoading]);
@@ -257,7 +253,7 @@ const Auditoria = () => {
       // Limpiar el campo de quiénes reciben al cambiar de tienda
       handleFormularioChange('quienes_reciben', '');
       
-      console.log(`✅ Tienda seleccionada: ${tienda.nombre} (ID: ${tienda.id_tienda})`);
+;
     }
   };
 
@@ -330,7 +326,7 @@ const Auditoria = () => {
         [subcategoriaId]: false
       }));
 
-      console.log('✅ Nueva pregunta agregada exitosamente');
+;
 
     } catch (error) {
       console.error('Error al agregar nueva pregunta:', error);
@@ -343,9 +339,6 @@ const Auditoria = () => {
     try {
       if (!auditoriaActual) return;
 
-      console.log(`🗑️ Intentando eliminar pregunta con ID: ${idAuditoriaPregunta}`);
-
-      // Primero obtener información completa de la pregunta para determinar si es base o variable
       const { data: preguntaInfo, error: errorInfo } = await supabase
         .from('auditoria_preguntas')
         .select('id_pregunta, texto_pregunta, id_subcategoria')
@@ -354,11 +347,7 @@ const Auditoria = () => {
 
       if (errorInfo) throw errorInfo;
 
-      console.log('📋 Información de pregunta:', preguntaInfo);
-
-      // Si tiene id_pregunta, es una pregunta base -> usar sistema modular
       if (preguntaInfo.id_pregunta) {
-        console.log('🔧 Eliminando pregunta base usando sistema modular');
         const exito = await eliminarPreguntaDeAuditoria(
           auditoriaActual.id_auditoria, 
           preguntaInfo.id_pregunta,
@@ -369,21 +358,9 @@ const Auditoria = () => {
           throw new Error('Error en eliminarPreguntaDeAuditoria');
         }
       } else {
-        // Si no tiene id_pregunta, es una pregunta variable -> eliminar completamente
-        console.log('🔧 Eliminando pregunta variable de la base de datos');
-        
-        // Paso 1: Eliminar respuesta asociada si existe
-        const { error: errorRespuesta } = await supabase
-          .from('respuestas')
-          .delete()
-          .eq('id_auditoria_pregunta', idAuditoriaPregunta);
+        await supabase.from('respuestas').delete().eq('id_auditoria_pregunta', idAuditoriaPregunta);
 
-        if (errorRespuesta) {
-          console.warn('⚠️ Error eliminando respuesta (puede no existir):', errorRespuesta);
-        }
-
-        // Paso 2: Buscar si existe en preguntas_variables por texto y subcategoría
-        const { data: preguntaVariable, error: errorBusqueda } = await supabase
+        const { data: preguntaVariable } = await supabase
           .from('preguntas_variables')
           .select('id_pregunta_variable')
           .eq('id_auditoria', auditoriaActual.id_auditoria)
@@ -391,45 +368,25 @@ const Auditoria = () => {
           .eq('texto_pregunta', preguntaInfo.texto_pregunta)
           .maybeSingle();
 
-        if (errorBusqueda) {
-          console.warn('⚠️ Error buscando pregunta variable:', errorBusqueda);
-        }
-
-        // Paso 3: Eliminar de preguntas_variables si existe
         if (preguntaVariable) {
-          console.log(`🗑️ Eliminando pregunta variable con ID: ${preguntaVariable.id_pregunta_variable}`);
           const { error: errorEliminarVariable } = await supabase
             .from('preguntas_variables')
             .delete()
             .eq('id_pregunta_variable', preguntaVariable.id_pregunta_variable);
-
-          if (errorEliminarVariable) {
-            console.error('❌ Error eliminando de preguntas_variables:', errorEliminarVariable);
-            throw errorEliminarVariable;
-          }
-        } else {
-          console.log('ℹ️ No se encontró pregunta variable correspondiente');
+          if (errorEliminarVariable) throw errorEliminarVariable;
         }
 
-        // Paso 4: Eliminar de auditoria_preguntas
         const { error: errorAuditoriaPregunta } = await supabase
           .from('auditoria_preguntas')
           .delete()
           .eq('id_auditoria_pregunta', idAuditoriaPregunta)
           .eq('id_auditoria', auditoriaActual.id_auditoria);
+        if (errorAuditoriaPregunta) throw errorAuditoriaPregunta;
 
-        if (errorAuditoriaPregunta) {
-          console.error('❌ Error eliminando de auditoria_preguntas:', errorAuditoriaPregunta);
-          throw errorAuditoriaPregunta;
-        }
-
-        // Paso 5: Recargar la auditoría manteniendo el modo actual
         if (auditoriaActual?.id_auditoria) {
           await recargarAuditoriaActual(auditoriaActual.id_auditoria);
         }
       }
-      
-      console.log('✅ Pregunta eliminada exitosamente de la auditoría');
       
     } catch (error) {
       console.error('❌ Error eliminando pregunta:', error);
@@ -531,7 +488,7 @@ const Auditoria = () => {
       setShowSuccessMessage(true);
       setTimeout(() => setShowSuccessMessage(false), 3000);
       
-      console.log('✅ Auditoría actualizada exitosamente');
+;
       
     } catch (error) {
       console.error('❌ Error actualizando auditoría:', error);
@@ -544,47 +501,27 @@ const Auditoria = () => {
   // Función auxiliar para obtener el nombre del auditor
   const obtenerNombreAuditor = async (): Promise<string> => {
     try {
-      console.log('🔍 Obteniendo nombre del auditor...', { 
-        user: user ? { name: user.name, email: user.email, id: user.id } : null 
-      });
+      if (user?.name) return user.name;
 
-      // Primero, intentar con el nombre del user del hook (más confiable)
-      if (user?.name) {
-        console.log('✅ Nombre obtenido del user hook:', user.name);
-        return user.name;
-      }
-
-      // Si no, buscar en la base de datos por ID de usuario
       if (user?.id) {
         const { data: usuarioData, error } = await supabase
           .from('usuarios')
           .select('nombre')
           .eq('id', user.id)
           .single();
-
-        if (!error && usuarioData?.nombre) {
-          console.log('✅ Nombre obtenido de BD por ID:', usuarioData.nombre);
-          return usuarioData.nombre;
-        }
+        if (!error && usuarioData?.nombre) return usuarioData.nombre;
       }
 
-      // Buscar por email si está disponible
       if (user?.email) {
         const { data: usuarioData, error } = await supabase
           .from('usuarios')
           .select('nombre')
-          .eq('celular', user.email.split('@')[0]) // El email puede ser celular@tienda.com
+          .eq('celular', user.email.split('@')[0])
           .single();
-
-        if (!error && usuarioData?.nombre) {
-          console.log('✅ Nombre obtenido de BD por celular:', usuarioData.nombre);
-          return usuarioData.nombre;
-        }
+        if (!error && usuarioData?.nombre) return usuarioData.nombre;
       }
 
-      // Fallback: generar nombre descriptivo
       const fallbackName = user?.email?.split('@')[0] || user?.name || 'Auditor';
-      console.log('⚠️ Usando nombre fallback:', fallbackName);
       return fallbackName.charAt(0).toUpperCase() + fallbackName.slice(1);
     } catch (error) {
       console.error('❌ Error obteniendo nombre del auditor:', error);
@@ -595,30 +532,15 @@ const Auditoria = () => {
   // Función auxiliar para obtener el nombre de la tienda
   const obtenerNombreTienda = async (idTienda: number): Promise<string> => {
     try {
-      console.log('🏪 Obteniendo nombre de la tienda...', { 
-        idTienda, 
-        tiendaSeleccionada: tiendaSeleccionada?.nombre 
-      });
+      if (tiendaSeleccionada?.nombre) return tiendaSeleccionada.nombre;
 
-      // Primero usar tiendaSeleccionada si está disponible
-      if (tiendaSeleccionada?.nombre) {
-        console.log('✅ Nombre obtenido de tiendaSeleccionada:', tiendaSeleccionada.nombre);
-        return tiendaSeleccionada.nombre;
-      }
-
-      // Si no, consultar directamente a la base de datos
       const { data: tiendaData, error } = await supabase
         .from('tiendas')
         .select('nombre')
         .eq('id_tienda', idTienda)
         .single();
 
-      if (!error && tiendaData?.nombre) {
-        console.log('✅ Nombre obtenido de BD:', tiendaData.nombre);
-        return tiendaData.nombre;
-      }
-
-      console.warn('⚠️ No se encontró nombre de tienda:', { error, tiendaData });
+      if (!error && tiendaData?.nombre) return tiendaData.nombre;
       return `Tienda #${idTienda}`;
     } catch (error) {
       console.error('❌ Error obteniendo nombre de la tienda:', error);
@@ -629,37 +551,18 @@ const Auditoria = () => {
   // Función para notificar por email cuando se completa una auditoría
   const notificarAuditoriaCompletada = async (datosAuditoria: Auditoria) => {
     try {
-      console.log('📧 Enviando notificaciones de auditoría completada...');
-      
-      // Obtener información adicional
       const resumen = calcularResumen();
-      
-      // Obtener nombres reales del auditor y la tienda
       const [nombreAuditor, nombreTienda] = await Promise.all([
         obtenerNombreAuditor(),
         obtenerNombreTienda(datosAuditoria.id_tienda)
       ]);
-      
-      console.log('👤 Información del auditor y tienda:', {
-        auditor: nombreAuditor,
-        tienda: nombreTienda,
-        userEmail: user?.email,
-        auditoriaId: datosAuditoria.id_auditoria,
-        tiendaId: datosAuditoria.id_tienda
-      });
-      
-      // Obtener conteo de fotos usando tu servicio existente
+
       let totalFotos = 0;
       try {
         const { data: conteoFotos } = await obtenerConteoFotos(datosAuditoria.id_auditoria);
         totalFotos = conteoFotos ? Object.values(conteoFotos).reduce((a: number, b: number) => a + b, 0) : 0;
-      } catch (error) {
-        console.warn('No se pudo obtener conteo de fotos:', error);
-      }
+      } catch { /* ignorar */ }
 
-      // Preparar resumen de categorías con porcentajes
-      console.log('📊 Procesando categorías para email:', categorias.map(c => c.nombre));
-      
       const categoriasResumen: CategoriaResumen[] = categorias.map(categoria => {
         const preguntasCategoria = categoria.subcategorias.flatMap(sub => sub.preguntas);
         const preguntasAprobadas = preguntasCategoria.filter(p => {
@@ -683,21 +586,13 @@ const Auditoria = () => {
           preguntas_reprobadas: preguntasReprobadas
         };
 
-        console.log(`📈 Categoría procesada: ${categoria.nombre}`, categoriaResumen);
         return categoriaResumen;
       });
 
-      console.log('📋 Resumen completo de categorías:', categoriasResumen);
-
-      // Preparar resumen de fotos con URLs reales
       let fotosResumen: FotoResumen[] = [];
       try {
-        console.log('📷 Obteniendo fotos reales de la auditoría...');
         const { success, data: fotosReales } = await obtenerFotosAuditoria(datosAuditoria.id_auditoria);
-        
         if (success && fotosReales) {
-          console.log(`📸 Se encontraron ${fotosReales.length} fotos en total`);
-          
           // Agrupar fotos por tipo
           const fotosPorTipo: { [key: string]: AuditoriaFoto[] } = {};
           fotosReales.forEach(foto => {
@@ -717,9 +612,6 @@ const Auditoria = () => {
           fotosResumen = tiposFotos.map(tipo => {
             const fotosDelTipo = fotosPorTipo[tipo] || [];
             const urls = fotosDelTipo.map(foto => foto.url_foto);
-            
-            console.log(`📷 ${tipo}: ${fotosDelTipo.length} fotos`, urls.length > 0 ? 'con URLs' : 'sin URLs');
-            
             return {
               tipo,
               cantidad: fotosDelTipo.length,
@@ -727,25 +619,20 @@ const Auditoria = () => {
             };
           });
         }
-      } catch (error) {
-        console.warn('Error obteniendo fotos reales:', error);
-        // Fallback al método anterior si falla
+      } catch {
         try {
           const { data: conteoFotos } = await obtenerConteoFotos(datosAuditoria.id_auditoria);
           const tiposFotos = [
             'Fachada', 'Campaña y promociones', 'General de la tienda por los lados',
             'Punto de pago', 'Vestier', 'Implementos de aseo', 'Bodegas',
-            'Personal de la tienda', 'Libro verde y carpetas', 
+            'Personal de la tienda', 'Libro verde y carpetas',
             'Cuaderno de seguimiento de pptos e informes de la marca'
           ];
-          
           fotosResumen = tiposFotos.map(tipo => ({
             tipo,
             cantidad: conteoFotos?.[tipo as keyof typeof conteoFotos] || 0
           }));
-        } catch (fallbackError) {
-          console.warn('Error en fallback de fotos:', fallbackError);
-        }
+        } catch { /* ignorar */ }
       }
 
       // Preparar datos para el email con información detallada
@@ -755,7 +642,7 @@ const Auditoria = () => {
         fecha_auditoria: formatearFechaEmail(datosAuditoria.fecha || new Date()),
         calificacion_final: Math.round(resumen.calificacion_total_ponderada),
         to_email: '', // Se llenará para cada destinatario
-        sistema_url: `${window.location.origin}/auditoria/estadisticas`,
+        sistema_url: `https://tienda-ropa-erp.vercel.app/auditoria/estadisticas`,
         
         // Información detallada
         categorias: categoriasResumen,
@@ -773,83 +660,35 @@ const Auditoria = () => {
         notas_conclusiones: conclusiones || datosAuditoria.notas_conclusiones || 'No se registraron conclusiones específicas.'
       };
 
-      console.log('📊 Datos de la auditoría para notificar:', {
-        id: datosEmail.auditoria_id,
-        tienda: datosEmail.tienda_nombre,
-        auditor: datosEmail.auditor,
-        calificacion: datosEmail.calificacion_final,
-        totalFotos,
-        fecha: datosEmail.fecha_auditoria,
-        categorias: categoriasResumen.length,
-        fotos: fotosResumen.length
-      });
+      const empleadas = await obtenerEmailsEmpleadasTienda(datosAuditoria.id_tienda);
+      const destinatarios = [...new Set(['fmartinezt@gmail.com', ...empleadas])];
 
-      // Obtener lista de destinatarios
-      const destinatarios = obtenerDestinatariosNotificacion();
-      
-      if (destinatarios.length === 0) {
-        console.warn('⚠️ No hay destinatarios configurados para notificaciones');
-        return;
-      }
-
-      console.log('📮 Enviando notificaciones a:', destinatarios);
-
-      // Enviar notificación al primer destinatario (principal)
       const emailPrincipal = destinatarios[0];
-      const resultado = await enviarNotificacionAuditoriaCompletada({
-        ...datosEmail,
-        to_email: emailPrincipal
-      });
+      const resultado = await enviarNotificacionAuditoriaCompletada({ ...datosEmail, to_email: emailPrincipal });
 
       if (resultado.success) {
-        console.log('✅ Notificación enviada exitosamente a:', emailPrincipal);
-        
-        // Mostrar mensaje de éxito
         setShowSuccessMessage(true);
         setTimeout(() => setShowSuccessMessage(false), 4000);
 
-        // Si hay más destinatarios, enviar a ellos también (opcional)
-        if (destinatarios.length > 1) {
-          console.log('📧 Enviando a destinatarios adicionales...');
-          
-          // Enviar a los demás destinatarios de forma asíncrona
-          const destinatariosAdicionales = destinatarios.slice(1);
-          destinatariosAdicionales.forEach(async (email) => {
-            try {
-              await enviarNotificacionAuditoriaCompletada({
-                ...datosEmail,
-                to_email: email
-              });
-              console.log('✅ Notificación adicional enviada a:', email);
-            } catch (error) {
-              console.error('❌ Error enviando a destinatario adicional:', email, error);
-            }
-          });
-        }
-
+        destinatarios.slice(1).forEach(async (email) => {
+          try {
+            await enviarNotificacionAuditoriaCompletada({ ...datosEmail, to_email: email });
+          } catch (error) {
+            console.error('Error enviando notificación a:', email, error);
+          }
+        });
       } else {
-        console.error('❌ Error enviando notificación principal:', resultado.error);
-        
-        // Mostrar error al usuario pero no bloquear el flujo
-        console.warn('⚠️ La auditoría se completó pero hubo un error enviando la notificación por email');
+        console.error('Error enviando notificación de auditoría:', resultado.error);
       }
 
     } catch (error) {
-      console.error('❌ Error general enviando notificaciones:', error);
-      // No fallar la finalización por error de notificación
-      console.warn('⚠️ La auditoría se completó correctamente, pero no se pudo enviar la notificación por email');
+      console.error('Error enviando notificaciones de auditoría:', error);
     }
   };
 
   // Función wrapper para finalizar auditoría con redirección
   const manejarFinalizarAuditoria = async () => {
     try {
-      console.log('💾 Finalizando auditoría con notas:', {
-        notasPersonal,
-        notasCampanas,
-        conclusiones
-      });
-      
       const exito = await finalizarAuditoria(
         conclusiones, // observacionesFinales
         notasPersonal, // notasPersonal 
@@ -857,16 +696,8 @@ const Auditoria = () => {
         conclusiones // conclusiones (también se usa como notas_conclusiones)
       );
       if (exito && auditoriaActual) {
-        console.log('🎉 Auditoría finalizada exitosamente');
-        
-        // Notificar a n8n
         await notificarAuditoriaCompletada(auditoriaActual);
-        
-        console.log('🎉 Redirección a estadísticas en 2 segundos...');
-        // Pequeño delay para mostrar el mensaje de éxito antes de redireccionar
-        setTimeout(() => {
-          navigate('/auditoria/estadisticas');
-        }, 2000);
+        setTimeout(() => navigate('/auditoria/estadisticas'), 2000);
       }
     } catch (error) {
       console.error('❌ Error finalizando auditoría:', error);
@@ -1271,14 +1102,6 @@ const Auditoria = () => {
       </div>
 
       {categorias.map((categoria) => {
-        console.log(`🔍 Renderizando categoría: ${categoria.nombre}`);
-        categoria.subcategorias.forEach(sub => {
-          console.log(`  📂 Subcategoría: ${sub.nombre} - ${sub.preguntas.length} preguntas`);
-          sub.preguntas.forEach((pregunta, idx) => {
-            console.log(`    📝 [${idx}] ID: ${pregunta.id_auditoria_pregunta}, Pregunta: "${pregunta.texto_pregunta.slice(0, 30)}...", id_pregunta: ${pregunta.id_pregunta}`);
-          });
-        });
-        
         return (
         <Card key={categoria.id} className="overflow-hidden">
           <div className="bg-gradient-to-r from-blue-500 to-blue-600 text-white p-4">
@@ -1413,7 +1236,7 @@ const Auditoria = () => {
                                   Comentario
                                 </label>
                                 <textarea
-                                  value={pregunta.respuesta.comentario || ''}
+                                  value={respuestas.get(pregunta.id_auditoria_pregunta)?.comentario || ''}
                                   onChange={(e) => {
                                     if (modoRevision && modoEdicion) {
                                       handleComentarioChange(pregunta.id_auditoria_pregunta, e.target.value);
@@ -1438,7 +1261,7 @@ const Auditoria = () => {
                                   Acción Correctiva {(!modoRevision || modoEdicion) && <span className="text-red-500">*</span>}
                                 </label>
                                 <textarea
-                                  value={pregunta.respuesta.accion_correctiva || ''}
+                                  value={respuestas.get(pregunta.id_auditoria_pregunta)?.accion_correctiva || ''}
                                   onChange={(e) => {
                                     if (modoRevision && modoEdicion) {
                                       handleAccionCorrectivaChange(pregunta.id_auditoria_pregunta, e.target.value);
@@ -1476,7 +1299,7 @@ const Auditoria = () => {
                               </summary>
                             <div className="mt-3">
                               <textarea
-                                value={pregunta.respuesta.comentario || ''}
+                                value={respuestas.get(pregunta.id_auditoria_pregunta)?.comentario || ''}
                                 onChange={(e) => {
                                   if (modoRevision && modoEdicion) {
                                     handleComentarioChange(pregunta.id_auditoria_pregunta, e.target.value);
@@ -1930,6 +1753,7 @@ const Auditoria = () => {
                       <textarea
                         value={notasPersonal}
                         onChange={(e) => setNotasPersonal(e.target.value)}
+                        onBlur={guardarNotasAutomaticamente}
                         rows={4}
                         className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
                         placeholder="Notas sobre el personal de la tienda..."
@@ -1944,6 +1768,7 @@ const Auditoria = () => {
                       <textarea
                         value={notasCampanas}
                         onChange={(e) => setNotasCampanas(e.target.value)}
+                        onBlur={guardarNotasAutomaticamente}
                         rows={4}
                         className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
                         placeholder="Notas sobre campañas y estado general de la tienda..."
@@ -1959,6 +1784,7 @@ const Auditoria = () => {
                     <textarea
                       value={conclusiones}
                       onChange={(e) => setConclusiones(e.target.value)}
+                      onBlur={guardarNotasAutomaticamente}
                       rows={4}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
                       placeholder="Conclusiones generales de la auditoría..."

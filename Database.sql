@@ -242,7 +242,7 @@ CREATE TABLE public.tiendas (
   created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
   meta_mensual numeric DEFAULT 0,
   telefono character varying,
-  zona character varying(10) CHECK (zona IN ('norte', 'sur')),
+  zona character varying CHECK (zona::text = ANY (ARRAY['norte'::character varying, 'sur'::character varying]::text[])),
   CONSTRAINT tiendas_pkey PRIMARY KEY (id_tienda),
   CONSTRAINT tiendas_id_admin_fkey FOREIGN KEY (id_admin) REFERENCES public.usuarios(id_usuario),
   CONSTRAINT tiendas_id_asesora_fkey FOREIGN KEY (id_asesora) REFERENCES public.usuarios(id_usuario)

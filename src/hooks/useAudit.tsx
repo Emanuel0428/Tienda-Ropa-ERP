@@ -158,11 +158,14 @@ export const useAudit = () => {
         throw new Error('No se pudieron cargar las categorías');
       }
 
-      // Organizar respuestas en Map
+      // Organizar respuestas en Map — tomar la más reciente si hay filas duplicadas
       const respuestasMap = new Map<number, Respuesta>();
       preguntasAuditoriaData?.forEach(pregunta => {
         if (pregunta.respuesta && pregunta.respuesta.length > 0) {
-          respuestasMap.set(pregunta.id_auditoria_pregunta, pregunta.respuesta[0]);
+          const latest = pregunta.respuesta.reduce((prev: any, curr: any) =>
+            curr.id_respuesta > prev.id_respuesta ? curr : prev
+          );
+          respuestasMap.set(pregunta.id_auditoria_pregunta, latest);
         }
       });
 
@@ -292,23 +295,46 @@ export const useAudit = () => {
     }
 
     try {
-      const { data, error } = await supabase
-        .from('respuestas')
-        .upsert({
-          id_auditoria_pregunta,
-          respuesta,
-          comentario: comentario || null,
-          accion_correctiva: accion_correctiva || null
-        })
-        .select()
-        .single();
+      const existente = respuestasRef.current.get(id_auditoria_pregunta);
+      let data, error;
+
+      if (existente?.id_respuesta) {
+        // Actualizar fila existente usando su PK
+        ({ data, error } = await supabase
+          .from('respuestas')
+          .update({
+            respuesta,
+            comentario: comentario ?? existente.comentario ?? null,
+            accion_correctiva: accion_correctiva ?? existente.accion_correctiva ?? null,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id_respuesta', existente.id_respuesta)
+          .select()
+          .single());
+      } else {
+        // Insertar nueva fila
+        ({ data, error } = await supabase
+          .from('respuestas')
+          .insert({
+            id_auditoria_pregunta,
+            respuesta,
+            comentario: comentario || null,
+            accion_correctiva: accion_correctiva || null
+          })
+          .select()
+          .single());
+      }
 
       if (error) throw error;
 
-      // Actualizar estado local
-      setRespuestas(prev => new Map(prev.set(id_auditoria_pregunta, data)));
+      // Actualizar estado local sin mutar el Map anterior
+      setRespuestas(prev => {
+        const next = new Map(prev);
+        next.set(id_auditoria_pregunta, data);
+        return next;
+      });
 
-      // Actualizar categorías con la nueva respuesta
+      // Sincronizar categorías para mantener condiciones de renderizado
       setCategorias(prev =>
         prev.map(categoria => ({
           ...categoria,
@@ -596,6 +622,9 @@ export const useAudit = () => {
   // Refs para manejar timeouts de debounce
   const comentarioTimeoutRef = useRef<Record<number, NodeJS.Timeout>>({});
   const accionCorrectivaTimeoutRef = useRef<Record<number, NodeJS.Timeout>>({});
+  // Ref para leer siempre los valores más recientes dentro de los timeouts
+  const respuestasRef = useRef(respuestas);
+  respuestasRef.current = respuestas;
 
   // Helper: busca la respuesta en categorias como fallback cuando el Map está desincronizado
   const getRespuestaFallback = (id_auditoria_pregunta: number) => {
@@ -629,18 +658,19 @@ export const useAudit = () => {
     if (!respuestaActual) return;
 
     const nuevaRespuesta = { ...respuestaActual, comentario };
-    setRespuestas(prev => new Map(prev.set(id_auditoria_pregunta, nuevaRespuesta)));
-    updateCategoriasConRespuesta(id_auditoria_pregunta, nuevaRespuesta);
+    setRespuestas(prev => { const next = new Map(prev); next.set(id_auditoria_pregunta, nuevaRespuesta); return next; });
 
     if (comentarioTimeoutRef.current[id_auditoria_pregunta]) {
       clearTimeout(comentarioTimeoutRef.current[id_auditoria_pregunta]);
     }
     comentarioTimeoutRef.current[id_auditoria_pregunta] = setTimeout(async () => {
+      const latest = respuestasRef.current.get(id_auditoria_pregunta);
+      if (!latest) return;
       await guardarRespuesta(
         id_auditoria_pregunta,
-        respuestaActual.respuesta,
-        comentario,
-        respuestaActual.accion_correctiva
+        latest.respuesta,
+        latest.comentario,
+        latest.accion_correctiva
       );
       delete comentarioTimeoutRef.current[id_auditoria_pregunta];
     }, 1000);
@@ -651,18 +681,19 @@ export const useAudit = () => {
     if (!respuestaActual) return;
 
     const nuevaRespuesta = { ...respuestaActual, accion_correctiva: accionCorrectiva };
-    setRespuestas(prev => new Map(prev.set(id_auditoria_pregunta, nuevaRespuesta)));
-    updateCategoriasConRespuesta(id_auditoria_pregunta, nuevaRespuesta);
+    setRespuestas(prev => { const next = new Map(prev); next.set(id_auditoria_pregunta, nuevaRespuesta); return next; });
 
     if (accionCorrectivaTimeoutRef.current[id_auditoria_pregunta]) {
       clearTimeout(accionCorrectivaTimeoutRef.current[id_auditoria_pregunta]);
     }
     accionCorrectivaTimeoutRef.current[id_auditoria_pregunta] = setTimeout(async () => {
+      const latest = respuestasRef.current.get(id_auditoria_pregunta);
+      if (!latest) return;
       await guardarRespuesta(
         id_auditoria_pregunta,
-        respuestaActual.respuesta,
-        respuestaActual.comentario,
-        accionCorrectiva
+        latest.respuesta,
+        latest.comentario,
+        latest.accion_correctiva
       );
       delete accionCorrectivaTimeoutRef.current[id_auditoria_pregunta];
     }, 1000);

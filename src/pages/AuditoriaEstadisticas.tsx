@@ -67,17 +67,25 @@ const AuditoriaEstadisticas = () => {
       // 3. Auditorías por mes (últimos 6 meses)
       const auditoriasPorMes = calcularAuditoriasPorMes(auditorias || []);
 
-      // 4. Estadísticas por categorías — join correcto con respuestas y categorias
-      const { data: preguntasStats } = await supabase
-        .from('auditoria_preguntas')
-        .select(`
-          id_auditoria_pregunta,
-          id_categoria,
-          categorias ( nombre ),
-          respuestas ( respuesta )
-        `);
+      // 4. Estadísticas por categorías
+      const [{ data: preguntasStats }, { data: categoriasData }] = await Promise.all([
+        supabase
+          .from('auditoria_preguntas')
+          .select('id_auditoria_pregunta, id_categoria, respuestas ( respuesta )'),
+        supabase
+          .from('categorias')
+          .select('id, nombre')
+      ]);
 
-      const estadisticasCategorias = calcularEstadisticasCategorias(preguntasStats || []);
+      const categoriasMap: { [id: number]: string } = {};
+      (categoriasData || []).forEach((c: any) => { categoriasMap[c.id] = c.nombre; });
+
+      const preguntasConCategoria = (preguntasStats || []).map((p: any) => ({
+        ...p,
+        categorias: { nombre: categoriasMap[p.id_categoria] || null }
+      }));
+
+      const estadisticasCategorias = calcularEstadisticasCategorias(preguntasConCategoria);
 
       // 5. Auditoría más reciente con nombre de tienda
       const auditoriasOrdenadas = [...(auditorias || [])].sort(
