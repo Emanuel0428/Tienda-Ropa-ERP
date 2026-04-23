@@ -24,6 +24,7 @@ import RotatingSchedules from './pages/RotatingSchedules';
 import MySchedule from './pages/MySchedule';
 import Horarios from './pages/Horarios';
 import MisAuditorias from './pages/MisAuditorias';
+import AuditoriaVer from './pages/AuditoriaVer';
 import Auth from './pages/Auth';
 import Profile from './pages/Profile';
 import Settings from './pages/Settings';
@@ -159,6 +160,9 @@ function App() {
             } />
             <Route path="/auditoria/historial" element={
               <AuditorRoute><AuditoriaHistorial /></AuditorRoute>
+            } />
+            <Route path="/auditoria/:id/ver" element={
+              <AuditorRoute><AuditoriaVer /></AuditorRoute>
             } />
             <Route path="/auditoria/estadisticas" element={
               <AuditorRoute><AuditoriaEstadisticas /></AuditorRoute>

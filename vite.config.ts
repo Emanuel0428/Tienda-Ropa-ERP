@@ -15,7 +15,7 @@ export default defineConfig({
   },
   server: {
     port: 5173,
-    strictPort: true,
+    strictPort: false,
     headers: {
       // Eliminar headers que bloquean OAuth popups
       'Cross-Origin-Opener-Policy': 'same-origin-allow-popups',

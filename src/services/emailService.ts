@@ -113,7 +113,13 @@ export const enviarNotificacionAuditoriaCompletada = async (
       else if (error.status === 413) mensajeError = 'Contenido del email demasiado grande';
     }
 
-    console.warn('Email no enviado:', mensajeError, { auditoriaId: datos.auditoria_id });
+    console.warn('Email no enviado:', mensajeError, {
+      auditoriaId: datos.auditoria_id,
+      errorRaw: error,
+      errorStatus: error?.status,
+      errorText: error?.text,
+      errorMessage: error?.message,
+    });
     return { success: false, error: mensajeError };
   }
 };
