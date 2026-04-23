@@ -15,7 +15,6 @@ import Goals from './pages/Goals';
 import Inventory from './pages/Inventory';
 import Auditoria from './pages/Auditoria';
 import AuditoriaHistorial from './pages/AuditoriaHistorial';
-import AuditoriaEstadisticas from './pages/AuditoriaEstadisticas';
 import PreguntasMaestras from './pages/PreguntasMaestras';
 import Attendance from './pages/Attendance';
 import AttendanceMonitor from './pages/AttendanceMonitor';
@@ -163,9 +162,6 @@ function App() {
             } />
             <Route path="/auditoria/:id/ver" element={
               <AuditorRoute><AuditoriaVer /></AuditorRoute>
-            } />
-            <Route path="/auditoria/estadisticas" element={
-              <AuditorRoute><AuditoriaEstadisticas /></AuditorRoute>
             } />
             <Route path="/preguntas-maestras" element={
               <AdminRoute><PreguntasMaestras /></AdminRoute>

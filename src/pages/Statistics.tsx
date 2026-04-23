@@ -193,26 +193,26 @@ const Statistics = () => {
     let fallosMasComunes: FalloComun[] = [];
 
     if (idsAuditoria.length > 0) {
-      const { data: preguntasData } = await supabase
-        .from('auditoria_preguntas')
-        .select(`
-          id_auditoria_pregunta,
-          texto_pregunta,
-          id_auditoria,
-          categorias ( nombre ),
-          respuestas ( respuesta )
-        `)
-        .in('id_auditoria', idsAuditoria);
+      const [{ data: preguntasData }, { data: categoriasData }] = await Promise.all([
+        supabase
+          .from('auditoria_preguntas')
+          .select('id_auditoria_pregunta, texto_pregunta, id_auditoria, id_categoria, respuestas ( respuesta )')
+          .in('id_auditoria', idsAuditoria),
+        supabase.from('categorias').select('id, nombre'),
+      ]);
+
+      const catMap: Record<number, string> = {};
+      (categoriasData || []).forEach((c: any) => { catMap[c.id] = c.nombre; });
 
       const fallosMap: Record<string, { texto: string; categoria: string; fallos: number; total: number }> = {};
       (preguntasData || []).forEach((p: any) => {
         const r = p.respuestas?.[0];
-        if (!r) return; // sin respuesta = ignorar
+        if (!r) return;
         const key = p.texto_pregunta;
         if (!fallosMap[key]) {
           fallosMap[key] = {
             texto: p.texto_pregunta,
-            categoria: p.categorias?.nombre || 'Sin categoría',
+            categoria: catMap[p.id_categoria] || 'Sin categoría',
             fallos: 0, total: 0,
           };
         }
@@ -475,20 +475,12 @@ const Statistics = () => {
             ) : (
               <div className="space-y-3">
                 {stats.fallosMasComunes.map((f, i) => (
-                  <div key={i} className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                    <div className="flex items-start justify-between gap-4 mb-2">
-                      <div className="flex-1">
-                        <p className="text-sm font-medium text-gray-900 dark:text-white leading-snug">{f.texto_pregunta}</p>
-                        <p className="text-xs text-gray-500 mt-0.5">{f.categoria}</p>
-                      </div>
-                      <div className="text-right flex-shrink-0">
-                        <span className={`text-lg font-bold ${f.porcentaje >= 70 ? 'text-red-600' : f.porcentaje >= 40 ? 'text-yellow-600' : 'text-orange-500'}`}>
-                          {f.porcentaje}%
-                        </span>
-                        <p className="text-xs text-gray-400">{f.fallos}/{f.total} fallos</p>
-                      </div>
+                  <div key={i} className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg flex items-start gap-4">
+                    <span className="text-2xl font-bold text-red-500 shrink-0 w-10 text-center">{f.fallos}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-900 dark:text-white leading-snug">{f.texto_pregunta}</p>
+                      <p className="text-xs text-gray-500 mt-0.5">{f.categoria}</p>
                     </div>
-                    <ScoreBar value={f.porcentaje} color={f.porcentaje >= 70 ? 'red' : f.porcentaje >= 40 ? 'yellow' : 'orange'} />
                   </div>
                 ))}
               </div>
